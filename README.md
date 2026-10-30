@@ -6,7 +6,7 @@
 
 ## 功能
 
-交互参考微信小程序 [LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)。**v0.6.3** Wallet 单卡聚焦虚化 / 展开流畅 / 最近浏览做法大图 / 视频自动播 / 计时按钮主题：
+交互参考微信小程序 [LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)。**v0.6.4** Wallet 单卡聚焦虚化 / 展开流畅 / 最近浏览做法大图 / 视频自动播 / 计时按钮主题：
 
 - **视频做法**：详情页入口，底部弹层展示 B 站搜索结果（封面/标题/UP/时长/播放量），一键「在 B 站打开」（优先 [eat.ryanuo.cc](https://eat.ryanuo.cc/) `/api/video-search`，失败回落官方搜索 API，再不行打开搜索页）
 - **整图做法**：有图时默认以 [king-jingxiang/HowToCook](https://github.com/king-jingxiang/HowToCook) 的 9:16 信息图替换步骤时间轴（`InteractiveViewer` 缩放）；按需从 GitHub Pages 下载并磁盘缓存，不打进 APK；原料仍保留（用量与原料同行合并）
@@ -14,7 +14,7 @@
 - **分类 / 原料图标**：Food Doodle 涂鸦；原料关键词→图标已校对（牛奶/面粉/黄油/胡椒等）
 - **Logo / 主题**：深蓝 `#1A1F3A`、奶油底 `#FFF6EB`、珊瑚强调 `#FF8A65`、霓虹绿 `#39FF5A`（无紫色）
 - **首页**：搜索框（珊瑚）→ 历史芯片紧贴搜索框 → Wallet 分类叠卡（惯性滚轮物理 / 单卡聚焦放大 / 离焦虚化仍可读名；上滑选定打开）→ 最近浏览（最多 20）
-- **动效**：分类 Wallet 叠卡（惯性摩擦+弹簧回弹 stiffness300/damping20；AnimatedPositioned 展开）、步骤磁吸后绘时间轴、时:分惯性滚轮、底栏圆形揭示
+- **动效**：分类 Wallet 叠卡（惯性摩擦+弹簧回弹 stiffness300/damping20；对称缓动展开/叠起；甩动能跨多张再吸附）、步骤磁吸后绘时间轴、时:分惯性滚轮、底栏圆形揭示
 - **底栏**：浅色奶油底（非黑/海军实心），选中珊瑚/海军
 - **应用内更新**（Android）：「我的 → 检查更新」拉取 GitHub Releases APK
 - 收藏、离线 JSON 菜谱、搜索结果页均保留

@@ -9,10 +9,10 @@ import '../theme/doodle_icons.dart';
 
 /// Apple Wallet–style category stack with inertia-wheel swipe physics.
 ///
-/// Folded: vertical pager — velocity + friction, snap to nearest card,
-/// rubber-band ends (spring stiffness 300 / damping 20). Only the center
-/// card is sharp & larger; neighbors blur/fade (name still readable).
-/// Expanded: [AnimatedPositioned] + [RepaintBoundary] fan-out list.
+/// Folded: vertical pager — velocity coasts across **multiple** cards, then
+/// snaps to nearest (spring 300/20). Center card sharp & larger; neighbors
+/// blur/fade (name still readable).
+/// Expanded: fan-out list with the **same** slow duration/curve as collapse.
 class StackedCategoryCards extends StatefulWidget {
   final List<CategoryInfo> categories;
   final Map<String, int> counts;
@@ -39,14 +39,19 @@ class StackedCategoryCards extends StatefulWidget {
   State<StackedCategoryCards> createState() => _StackedCategoryCardsState();
 }
 
-class _StackedCategoryCardsState extends State<StackedCategoryCards> {
+class _StackedCategoryCardsState extends State<StackedCategoryCards>
+    with SingleTickerProviderStateMixin {
   static const _cardH = 104.0;
   static const _gap = 12.0;
-  static const _foldAnim = Duration(milliseconds: 320);
+  static const _peek = 28.0;
   /// Viewport shows ~2.4 cards so neighbors peek above/below focus.
   static const _viewportFraction = 0.42;
+  /// Symmetric expand ↔ collapse duration.
+  static const _fanDuration = Duration(milliseconds: 480);
 
   late bool _expanded;
+  late final AnimationController _fanCtrl;
+  late final CurvedAnimation _fanCurve;
   PageController? _pageCtrl;
   int _focus = 0;
 
@@ -54,6 +59,16 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards> {
   void initState() {
     super.initState();
     _expanded = widget.initiallyExpanded && !widget.autoFanOnMount;
+    _fanCtrl = AnimationController(
+      vsync: this,
+      duration: _fanDuration,
+      value: _expanded ? 1 : 0,
+    );
+    _fanCurve = CurvedAnimation(
+      parent: _fanCtrl,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeOutCubic,
+    );
     _initPageCtrl();
     if (widget.autoFanOnMount) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -83,24 +98,28 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards> {
 
   @override
   void dispose() {
+    _fanCurve.dispose();
+    _fanCtrl.dispose();
     _pageCtrl?.dispose();
     super.dispose();
   }
 
   int get _n => widget.categories.length;
 
-  void _expand() {
-    if (_expanded) return;
+  Future<void> _expand() async {
+    if (_expanded && _fanCtrl.value >= 1) return;
     HapticFeedback.mediumImpact();
     setState(() => _expanded = true);
+    await _fanCtrl.forward();
   }
 
-  void _collapse() {
-    if (!_expanded) return;
+  Future<void> _collapse() async {
+    if (!_expanded && _fanCtrl.value <= 0) return;
     HapticFeedback.selectionClick();
+    await _fanCtrl.reverse();
+    if (!mounted) return;
     setState(() {
       _expanded = false;
-      // Re-sync pager to current focus after collapse.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_pageCtrl != null && _pageCtrl!.hasClients) {
           _pageCtrl!.jumpToPage(_focus);
@@ -166,77 +185,112 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards> {
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
-                child: Text(
-                  _expanded ? '叠起 ↑' : '展开 ↓',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                child: AnimatedBuilder(
+                  animation: _fanCtrl,
+                  builder: (context, _) {
+                    final open = _fanCtrl.value > 0.5;
+                    return Text(
+                      open ? '叠起 ↑' : '展开 ↓',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    );
+                  },
                 ),
               ),
             ],
           ],
         ),
         const SizedBox(height: 6),
-        if (!_expanded)
-          Text(
-            widget.openOnSwipeSettle
-                ? '惯性上滑选定并打开 · 点按打开当前'
-                : '惯性上滑切换 · 点按打开',
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.muted,
-            ),
-          ),
+        AnimatedBuilder(
+          animation: _fanCtrl,
+          builder: (context, _) {
+            if (_fanCtrl.value > 0.02) return const SizedBox.shrink();
+            return Text(
+              widget.openOnSwipeSettle
+                  ? '惯性上滑选定并打开 · 点按打开当前'
+                  : '惯性甩动可跨多张 · 点按打开',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.muted,
+              ),
+            );
+          },
+        ),
         const SizedBox(height: 10),
-        AnimatedContainer(
-          duration: _foldAnim,
-          curve: Curves.easeOutCubic,
-          height: (_expanded ? expandedH : foldedH) + 8,
-          child: _expanded ? _buildExpanded(n) : _buildInertiaWheel(n),
+        AnimatedBuilder(
+          animation: _fanCurve,
+          builder: (context, _) {
+            final t = _fanCurve.value;
+            final height = foldedH + (expandedH - foldedH) * t;
+            // Show fan during expand/collapse/expanded; wheel only when fully folded.
+            final showFan = _expanded || t > 0.001;
+            return SizedBox(
+              height: height + 8,
+              child: showFan ? _buildFan(n, t) : _buildInertiaWheel(n),
+            );
+          },
         ),
       ],
     );
   }
 
-  Widget _buildExpanded(int n) {
+  /// Fan list: positions lerp from stacked peek → full list with stagger.
+  Widget _buildFan(int n, double t) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
         for (var i = 0; i < n; i++)
-          AnimatedPositioned(
-            key: ValueKey('fan-${widget.categories[i].id}'),
-            duration: Duration(milliseconds: 280 + (i * 28).clamp(0, 220)),
-            curve: Curves.easeOutCubic,
-            top: i * (_cardH + _gap),
-            left: 0,
-            right: 0,
-            height: _cardH,
-            child: RepaintBoundary(
-              child: GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  widget.onOpen(widget.categories[i]);
-                },
-                child: _CategoryCard(
-                  cat: widget.categories[i],
-                  count: widget.counts[widget.categories[i].id] ?? 0,
-                  paletteIndex: i,
-                  emphasis: 1,
-                ),
-              ),
-            ),
-          ),
+          _buildFanCard(i, n, t),
       ],
     );
   }
 
-  /// Inertia wheel: PageView + spring snap + blur by distance from center.
+  Widget _buildFanCard(int i, int n, double t) {
+    // Stagger each card so expand/collapse feels like a slow cascade
+    // (same curve both directions via reverseCurve).
+    final start = (i / n) * 0.35;
+    final end = (start + 0.65).clamp(0.0, 1.0);
+    final local = ((t - start) / (end - start).clamp(0.001, 1.0)).clamp(0.0, 1.0);
+    final eased = Curves.easeOutCubic.transform(local);
+
+    final stackTop = i * _peek * 0.55;
+    final listTop = i * (_cardH + _gap);
+    final top = stackTop + (listTop - stackTop) * eased;
+    final opacity = 0.55 + 0.45 * eased;
+
+    return Positioned(
+      key: ValueKey('fan-${widget.categories[i].id}'),
+      top: top,
+      left: 0,
+      right: 0,
+      height: _cardH,
+      child: Opacity(
+        opacity: opacity,
+        child: RepaintBoundary(
+          child: GestureDetector(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              widget.onOpen(widget.categories[i]);
+            },
+            child: _CategoryCard(
+              cat: widget.categories[i],
+              count: widget.counts[widget.categories[i].id] ?? 0,
+              paletteIndex: i,
+              emphasis: 1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Inertia wheel: PageView + multi-card coast + spring snap + blur.
   Widget _buildInertiaWheel(int n) {
     final ctrl = _pageCtrl;
     if (ctrl == null) return const SizedBox.shrink();
 
     return Container(
       decoration: BoxDecoration(
-        // Soft cream stage — not purple.
         color: AppTheme.cream.withValues(alpha: 0.55),
         borderRadius: BorderRadius.circular(AppTheme.radius),
         border: Border.all(
@@ -256,7 +310,6 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards> {
         onPageChanged: _onPageSettled,
         itemBuilder: (context, i) {
           final cat = widget.categories[i];
-          // Card chrome cached in RepaintBoundary; only transform/blur ticks.
           final cached = RepaintBoundary(
             child: _CategoryCard(
               cat: cat,
@@ -281,7 +334,6 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards> {
               final scale = lerpDouble(0.88, 1.06, focusT)!;
 
               Widget card = child!;
-              // Coral focus ring overlay when centered (theme, not purple).
               if (focusT > 0.85) {
                 card = DecoratedBox(
                   decoration: BoxDecoration(
@@ -345,9 +397,10 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards> {
   }
 }
 
-/// Page-snapping scroll physics with spring rubber-band
-/// (stiffness ≈ 300, damping ≈ 20) — mirrors inertia timer wheel feel.
-class _WalletInertiaPhysics extends PageScrollPhysics {
+/// Multi-card inertia: coast with friction (velocity can pass several pages),
+/// then spring-snap to the nearest page — like FixedExtentScrollPhysics,
+/// not default PageScrollPhysics (which always stops at ±1 page).
+class _WalletInertiaPhysics extends ScrollPhysics {
   const _WalletInertiaPhysics({super.parent});
 
   @override
@@ -361,6 +414,67 @@ class _WalletInertiaPhysics extends PageScrollPhysics {
         stiffness: 300,
         damping: 20,
       );
+
+  double _pagePixels(ScrollMetrics position) {
+    if (position is PageMetrics) {
+      return position.viewportDimension * position.viewportFraction;
+    }
+    return position.viewportDimension;
+  }
+
+  @override
+  Simulation? createBallisticSimulation(
+    ScrollMetrics position,
+    double velocity,
+  ) {
+    // Out of range → parent rubber-band.
+    if ((velocity <= 0.0 && position.pixels <= position.minScrollExtent) ||
+        (velocity >= 0.0 && position.pixels >= position.maxScrollExtent)) {
+      return super.createBallisticSimulation(position, velocity);
+    }
+
+    final Tolerance tolerance = toleranceFor(position);
+
+    // Natural friction coast (parent = BouncingScrollPhysics).
+    final Simulation? frictionSim =
+        super.createBallisticSimulation(position, velocity);
+
+    if (frictionSim != null) {
+      final end = frictionSim.x(double.infinity);
+      if (end == position.minScrollExtent || end == position.maxScrollExtent) {
+        return super.createBallisticSimulation(position, velocity);
+      }
+    }
+
+    final pagePx = _pagePixels(position);
+    if (pagePx <= 0) {
+      return super.createBallisticSimulation(position, velocity);
+    }
+
+    final coastEnd = frictionSim?.x(double.infinity) ?? position.pixels;
+    final rawPage = coastEnd / pagePx;
+    final targetPage = rawPage.roundToDouble();
+    final target = (targetPage * pagePx).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+
+    if (velocity.abs() < tolerance.velocity &&
+        (target - position.pixels).abs() < tolerance.distance) {
+      return null;
+    }
+
+    return ScrollSpringSimulation(
+      spring,
+      position.pixels,
+      target,
+      velocity,
+      tolerance: tolerance,
+    );
+  }
+
+  @override
+  bool get allowImplicitScrolling => false;
 }
 
 class _CategoryCard extends StatelessWidget {

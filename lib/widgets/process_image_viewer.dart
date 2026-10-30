@@ -9,8 +9,10 @@ import '../theme/app_theme.dart';
 
 /// Zoomable full-process recipe card (9:16 AI infographic).
 ///
-/// When not zoomed, **tap** or **swipe up** opens the same InteractiveViewer
-/// in a fullscreen maximize route (pinch/drag there; close to return).
+/// When not pinch-zoomed, **tap** or **swipe up** both open the same
+/// fullscreen maximize route (InteractiveViewer there for pinch/drag).
+/// Inline InteractiveViewer does not claim vertical pans at scale≈1 so
+/// the swipe-up maximize gesture works again.
 class ProcessImageViewer extends StatefulWidget {
   final Future<File?> Function() loader;
   final String? remoteUrl;
@@ -30,11 +32,21 @@ class ProcessImageViewer extends StatefulWidget {
 class _ProcessImageViewerState extends State<ProcessImageViewer> {
   late Future<File?> _future;
   final _transform = TransformationController();
+  bool _zoomed = false;
 
   @override
   void initState() {
     super.initState();
     _future = widget.loader();
+    _transform.addListener(_onTransform);
+  }
+
+  void _onTransform() {
+    final scale = _transform.value.getMaxScaleOnAxis();
+    final zoomed = (scale - 1.0).abs() >= 0.08;
+    if (zoomed != _zoomed && mounted) {
+      setState(() => _zoomed = zoomed);
+    }
   }
 
   @override
@@ -47,6 +59,7 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
 
   @override
   void dispose() {
+    _transform.removeListener(_onTransform);
     _transform.dispose();
     super.dispose();
   }
@@ -63,10 +76,10 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
     return (scale - 1.0).abs() < 0.08;
   }
 
-  void _openFullscreen(Widget imageChild) {
+  /// Same maximize used by tap and swipe-up.
+  void _maximize(Widget imageChild) {
     if (!_isIdentityZoom) return;
     HapticFeedback.lightImpact();
-    // Reset any tiny pan before leaving.
     _transform.value = Matrix4.identity();
     Navigator.of(context).push(
       PageRouteBuilder<void>(
@@ -116,7 +129,7 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
                 width: double.infinity,
                 filterQuality: FilterQuality.high,
                 headers: const {
-                  'User-Agent': 'HowToCook-mobile/0.6.3',
+                  'User-Agent': 'HowToCook-mobile/0.6.4',
                   'Accept': 'image/jpeg,image/*;q=0.8',
                 },
                 loadingBuilder: (context, child, progress) {
@@ -132,7 +145,8 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
               );
               return _ZoomableImage(
                 transform: _transform,
-                onMaximize: () => _openFullscreen(net),
+                zoomed: _zoomed,
+                onMaximize: () => _maximize(net),
                 child: net,
               );
             }
@@ -153,7 +167,8 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
           );
           return _ZoomableImage(
             transform: _transform,
-            onMaximize: () => _openFullscreen(fileImg),
+            zoomed: _zoomed,
+            onMaximize: () => _maximize(fileImg),
             child: fileImg,
           );
         },
@@ -176,7 +191,8 @@ class _Unavailable extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('暂无图片', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            const Text('暂无图片',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
             Text(
               ProcessImageService.attribution,
@@ -204,17 +220,14 @@ class _ZoomableImage extends StatelessWidget {
   final TransformationController transform;
   final Widget child;
   final VoidCallback onMaximize;
+  final bool zoomed;
 
   const _ZoomableImage({
     required this.transform,
     required this.child,
     required this.onMaximize,
+    required this.zoomed,
   });
-
-  bool _isIdentity(Matrix4 m) {
-    final scale = m.getMaxScaleOnAxis();
-    return (scale - 1.0).abs() < 0.08;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -223,22 +236,26 @@ class _ZoomableImage extends StatelessWidget {
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
+              // At identity scale: disable pan so vertical swipe / tap
+              // reach our GestureDetector → same maximize. When pinch-
+              // zoomed, re-enable pan for browsing the enlarged image.
               return GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  if (_isIdentity(transform.value)) onMaximize();
-                },
-                onVerticalDragEnd: (d) {
-                  if (!_isIdentity(transform.value)) return;
-                  final v = d.primaryVelocity ?? 0;
-                  // Swipe up → maximize (same as tap).
-                  if (v < -420) onMaximize();
-                },
+                onTap: zoomed ? null : onMaximize,
+                onVerticalDragEnd: zoomed
+                    ? null
+                    : (d) {
+                        final v = d.primaryVelocity ?? 0;
+                        // Swipe up → same maximize as tap.
+                        if (v < -320) onMaximize();
+                      },
                 child: InteractiveViewer(
                   transformationController: transform,
                   minScale: 0.8,
                   maxScale: 4,
-                  // Double-tap style expand handled via tap when identity.
+                  // Critical: don't steal vertical pans when not zoomed.
+                  panEnabled: zoomed,
+                  scaleEnabled: true,
                   child: SizedBox(
                     width: constraints.maxWidth,
                     height: constraints.maxHeight,
@@ -278,6 +295,17 @@ class _FullscreenProcessImage extends StatefulWidget {
 
 class _FullscreenProcessImageState extends State<_FullscreenProcessImage> {
   final _transform = TransformationController();
+  bool _zoomed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _transform.addListener(() {
+      final scale = _transform.value.getMaxScaleOnAxis();
+      final z = (scale - 1.0).abs() >= 0.08;
+      if (z != _zoomed && mounted) setState(() => _zoomed = z);
+    });
+  }
 
   @override
   void dispose() {
@@ -299,17 +327,18 @@ class _FullscreenProcessImageState extends State<_FullscreenProcessImage> {
         fit: StackFit.expand,
         children: [
           GestureDetector(
-            onVerticalDragEnd: (d) {
-              final scale = _transform.value.getMaxScaleOnAxis();
-              if ((scale - 1.0).abs() > 0.08) return;
-              final v = d.primaryVelocity ?? 0;
-              // Swipe down to dismiss when not zoomed.
-              if (v > 500) _close();
-            },
+            onVerticalDragEnd: _zoomed
+                ? null
+                : (d) {
+                    final v = d.primaryVelocity ?? 0;
+                    // Swipe down to dismiss when not zoomed.
+                    if (v > 500) _close();
+                  },
             child: InteractiveViewer(
               transformationController: _transform,
               minScale: 0.5,
               maxScale: 5,
+              panEnabled: _zoomed,
               child: SizedBox(
                 width: MediaQuery.sizeOf(context).width,
                 height: MediaQuery.sizeOf(context).height,
