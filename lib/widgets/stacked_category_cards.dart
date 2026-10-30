@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 
 import '../models/recipe.dart';
@@ -7,8 +8,10 @@ import '../theme/doodle_icons.dart';
 
 /// Apple Wallet–style **stacked overlapping** category pile (not a PageView).
 ///
-/// Folded: cards stack with peek; drag/fling the front card up — velocity
-/// can skip **multiple** cards then settle. Tap front to open.
+/// Folded: continuous free-scroll through the pile. Finger drag tracks 1:1;
+/// release coasts with friction (延迟滑动), then springs/folds to nearest
+/// card. Cards scrolled past rise into an **upper** peek pile; remaining
+/// cards stay in the lower peek stack. Tap front to open.
 /// Expanded: fan-out list with the same AnimationController as collapse.
 class StackedCategoryCards extends StatefulWidget {
   final List<CategoryInfo> categories;
@@ -39,19 +42,22 @@ class StackedCategoryCards extends StatefulWidget {
 class _StackedCategoryCardsState extends State<StackedCategoryCards>
     with TickerProviderStateMixin {
   static const _peek = 28.0;
+  static const _upperPeek = 22.0;
   static const _cardH = 104.0;
   static const _gap = 12.0;
   static const _visibleBehind = 3;
-  static const _swipeThreshold = 72.0;
+  static const _visibleAbove = 3;
+  /// Finger pixels per one card of [offset].
+  static const _pxPerCard = 78.0;
 
   late bool _expanded;
   late final AnimationController _fanCtrl;
-  late final AnimationController _swipeCtrl;
+  late final AnimationController _coastCtrl;
 
-  /// Index in [categories] that is currently the front (top) card.
-  int _front = 0;
-  double _dragDy = 0;
-  bool _cycling = false;
+  /// Continuous deck position in `[0, n-1]`. Integer = folded on that card.
+  double _offset = 0;
+  int _lastSettled = 0;
+  bool _dragging = false;
 
   @override
   void initState() {
@@ -64,10 +70,9 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
       ),
       value: _expanded ? 1 : 0,
     );
-    _swipeCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 280),
-    );
+    _coastCtrl = AnimationController.unbounded(vsync: this)
+      ..addListener(_onCoastTick)
+      ..addStatusListener(_onCoastStatus);
     if (widget.autoFanOnMount) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await Future<void>.delayed(const Duration(milliseconds: 240));
@@ -79,13 +84,37 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
 
   @override
   void dispose() {
+    _coastCtrl.removeListener(_onCoastTick);
+    _coastCtrl.removeStatusListener(_onCoastStatus);
     _fanCtrl.dispose();
-    _swipeCtrl.dispose();
+    _coastCtrl.dispose();
     super.dispose();
+  }
+
+  void _onCoastTick() {
+    if (!mounted || _dragging) return;
+    setState(() => _offset = _coastCtrl.value.clamp(0.0, _maxOffset));
+  }
+
+  void _onCoastStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed || !mounted) return;
+    final settled = _offset.round().clamp(0, (_n - 1).clamp(0, 9999));
+    setState(() {
+      _offset = settled.toDouble();
+      _coastCtrl.value = _offset;
+    });
+    if (settled != _lastSettled) {
+      _lastSettled = settled;
+      HapticFeedback.selectionClick();
+      if (widget.openOnSwipeSettle && _n > 0) {
+        widget.onOpen(widget.categories[settled]);
+      }
+    }
   }
 
   void _expand() {
     if (_expanded) return;
+    _coastCtrl.stop();
     HapticFeedback.mediumImpact();
     setState(() => _expanded = true);
     _fanCtrl.forward(from: 0);
@@ -101,89 +130,66 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   void _toggle() => _expanded ? _collapse() : _expand();
 
   int get _n => widget.categories.length;
-
-  CategoryInfo _atStackDepth(int depth) {
-    // depth 0 = front, 1 = next, …
-    final i = (_front + depth) % _n;
-    return widget.categories[i];
-  }
+  double get _maxOffset => (_n - 1).clamp(0, 9999).toDouble();
 
   int _paletteIndex(CategoryInfo cat) {
     final i = widget.categories.indexWhere((c) => c.id == cat.id);
     return i < 0 ? 0 : i;
   }
 
-  Future<void> _cycleFront() async {
-    if (_cycling || _n < 2) return;
-    _cycling = true;
-    HapticFeedback.lightImpact();
-    _swipeCtrl.value = 0;
-    await _swipeCtrl.animateTo(
-      1,
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeInCubic,
-    );
-    if (!mounted) return;
-    setState(() {
-      _front = (_front + 1) % _n;
-      _dragDy = 0;
-      _cycling = false;
-      _swipeCtrl.value = 0;
-    });
-    if (widget.openOnSwipeSettle && _n > 0) {
-      final selected = widget.categories[_front];
-      widget.onOpen(selected);
-    }
+  void _onVerticalDragStart(DragStartDetails _) {
+    if (_expanded) return;
+    _dragging = true;
+    _coastCtrl.stop();
   }
 
   void _onVerticalDragUpdate(DragUpdateDetails d) {
-    if (_expanded || _cycling) return;
+    if (_expanded || !_dragging) return;
+    // Finger up (negative dy) → advance through deck (offset ↑).
     setState(() {
-      // Only allow upward drag (negative dy in Flutter? actually dy positive = down)
-      _dragDy = (_dragDy + d.delta.dy).clamp(-180.0, 40.0);
+      _offset = (_offset - d.delta.dy / _pxPerCard).clamp(0.0, _maxOffset);
     });
   }
 
-  void _onVerticalDragEnd(DragEndDetails d) async {
-    if (_expanded || _cycling) return;
-    final v = d.primaryVelocity ?? 0;
-    // Upward fling / drag past threshold → advance. Velocity can skip many.
-    if (_dragDy < -_swipeThreshold || v < -550) {
-      var steps = 1;
-      if (v < -550) {
-        // ~900 px/s ≈ 1 extra card; cap so a huge flick still feels controlled.
-        steps = ( (-v) / 900 ).ceil().clamp(1, 6);
-      }
-      for (var i = 0; i < steps; i++) {
-        if (!mounted || _expanded) break;
-        await _cycleFront();
-      }
-    } else if (v > 550) {
-      // Downward fling → go previous (multi-card too).
-      var steps = (v / 900).ceil().clamp(1, 6);
-      for (var i = 0; i < steps; i++) {
-        if (!mounted || _expanded) break;
-        await _cycleBack();
-      }
-    } else {
-      setState(() => _dragDy = 0);
-    }
+  void _onVerticalDragEnd(DragEndDetails d) {
+    if (_expanded) return;
+    _dragging = false;
+    // primaryVelocity: positive = finger down. Advance = finger up = negative.
+    final pxVel = -(d.primaryVelocity ?? 0);
+    final offsetVel = pxVel / _pxPerCard;
+    _startCoast(offsetVel);
   }
 
-  Future<void> _cycleBack() async {
-    if (_cycling || _n < 2) return;
-    _cycling = true;
-    HapticFeedback.lightImpact();
-    // Instant settle backward (mirror of cycle front exit).
-    setState(() {
-      _front = (_front - 1 + _n) % _n;
-      _dragDy = 0;
-      _cycling = false;
-      _swipeCtrl.value = 0;
-    });
-    if (widget.openOnSwipeSettle && _n > 0) {
-      widget.onOpen(widget.categories[_front]);
+  void _onVerticalDragCancel() {
+    if (!_dragging) return;
+    _dragging = false;
+    _startCoast(0);
+  }
+
+  /// Friction coast toward a predicted stop, then soft spring-fold to nearest.
+  void _startCoast(double velocity) {
+    if (_n < 2) {
+      setState(() => _offset = 0);
+      return;
     }
+    // Ballistic end under light friction → "延迟滑动".
+    final friction = FrictionSimulation(0.085, _offset, velocity);
+    var predicted = friction.x(double.infinity);
+    if (predicted.isNaN || predicted.isInfinite) {
+      predicted = _offset + velocity * 0.35;
+    }
+    predicted = predicted.clamp(0.0, _maxOffset);
+    // Free-scroll feel: snap to nearest integer after coast prediction.
+    final target = predicted.round().toDouble().clamp(0.0, _maxOffset);
+
+    // Soft spring = lingering coast then fold. Stiffness low → 延迟.
+    final spring = SpringDescription(
+      mass: 1,
+      stiffness: 95,
+      damping: 16,
+    );
+    final sim = SpringSimulation(spring, _offset, target, velocity);
+    _coastCtrl.animateWith(sim);
   }
 
   @override
@@ -193,7 +199,9 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     if (n == 0) return const SizedBox.shrink();
 
     final peekN = n.clamp(0, _visibleBehind + 1);
-    final collapsedH = _cardH + _peek * (peekN - 1).clamp(0, 99) + 24;
+    final upperN = n.clamp(0, _visibleAbove);
+    final collapsedH =
+        _cardH + _peek * (peekN - 1).clamp(0, 99) + _upperPeek * upperN + 24;
     final expandedH = n * (_cardH + _gap) - _gap;
 
     return Column(
@@ -239,8 +247,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
         if (!_expanded)
           Text(
             widget.openOnSwipeSettle
-                ? '甩动叠卡可跨多张 · 停稳打开 · 点按打开当前'
-                : '甩动叠卡可跨多张再停 · 点按打开',
+                ? '自由甩动可跨多张 · 惯性停稳打开 · 点按打开当前'
+                : '自由甩动可跨多张再停 · 划过的叠在上部 · 点按打开',
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -249,7 +257,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
           ),
         const SizedBox(height: 10),
         AnimatedBuilder(
-          animation: Listenable.merge([_fanCtrl, _swipeCtrl]),
+          animation: Listenable.merge([_fanCtrl, _coastCtrl]),
           builder: (context, _) {
             final height =
                 collapsedH + (expandedH - collapsedH) * _fanCtrl.value;
@@ -307,54 +315,76 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   }
 
   Widget _buildWallet(int n) {
-    final exitT = _swipeCtrl.value;
-    final drag = _dragDy + (-140.0 * exitT);
-    final depths = List.generate(
-      n.clamp(0, _visibleBehind + 1),
-      (d) => d,
-    ).reversed.toList(); // draw back first
+    // Origin Y of the focus slot — leave room for the upper (passed) pile.
+    final focusOrigin = _upperPeek * _visibleAbove.toDouble();
+
+    // Draw far cards first so nearer ones paint on top.
+    final indices = List<int>.generate(n, (i) => i);
+    indices.sort((a, b) {
+      final da = (a - _offset).abs();
+      final db = (b - _offset).abs();
+      // Farther first; among equals prefer higher index under.
+      final c = db.compareTo(da);
+      return c != 0 ? c : a.compareTo(b);
+    });
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragStart: _onVerticalDragStart,
       onVerticalDragUpdate: _onVerticalDragUpdate,
       onVerticalDragEnd: _onVerticalDragEnd,
+      onVerticalDragCancel: _onVerticalDragCancel,
       child: Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.topCenter,
         children: [
-          for (final depth in depths) _buildWalletCard(depth, n, drag),
+          for (final i in indices) _buildWalletCard(i, n, focusOrigin),
         ],
       ),
     );
   }
 
-  Widget _buildWalletCard(int depth, int n, double drag) {
-    final cat = _atStackDepth(depth);
+  Widget _buildWalletCard(int index, int n, double focusOrigin) {
+    final cat = widget.categories[index];
     final paletteI = _paletteIndex(cat);
-    final isFront = depth == 0;
+    final rel = index - _offset; // <0 passed/upper, 0 focus, >0 lower
 
-    // Behind cards sit lower with scale-down (Wallet peek).
-    final baseTop = depth * _peek;
-    final scale = 1.0 - depth * 0.035;
-    final lift = isFront ? drag : (drag < 0 ? (-drag / 180) * depth * 4 : 0.0);
-    // As front leaves, next cards rise toward front position.
-    final promote = isFront
-        ? 0.0
-        : Curves.easeOut.transform(
-            ((-drag.clamp(-180.0, 0.0)) / 180.0).clamp(0.0, 1.0),
-          );
-    final top = baseTop * (1 - promote) + lift;
-    final thisScale = scale + (1 - scale) * promote;
+    // Cull cards too far from focus to keep the pile readable.
+    if (rel < -(_visibleAbove + 0.6) || rel > (_visibleBehind + 0.6)) {
+      return const SizedBox.shrink();
+    }
+
+    double top;
+    double scale;
+    double opacity;
+    double sideInset;
+
+    if (rel <= 0) {
+      // Passed cards rise into the upper peek pile; focus sits at origin.
+      final depthUp = (-rel).clamp(0.0, _visibleAbove + 0.5);
+      top = focusOrigin - depthUp * _upperPeek;
+      scale = 1.0 - depthUp * 0.03;
+      opacity = (1.0 - depthUp * 0.12).clamp(0.35, 1.0);
+      sideInset = 6.0 * depthUp;
+    } else {
+      // Remaining deck peeks below the focus (classic Wallet stack).
+      final depthDown = rel.clamp(0.0, _visibleBehind + 0.5);
+      top = focusOrigin + depthDown * _peek;
+      scale = 1.0 - depthDown * 0.035;
+      opacity = (1.0 - depthDown * 0.08).clamp(0.4, 1.0);
+      sideInset = 8.0 * depthDown;
+    }
+
+    final isFront = rel.abs() < 0.45;
 
     return Positioned(
       top: top,
-      left: 8.0 * depth * (1 - promote),
-      right: 8.0 * depth * (1 - promote),
+      left: sideInset,
+      right: sideInset,
       child: Opacity(
-        opacity: isFront
-            ? (1.0 - (-drag.clamp(-180.0, 0.0) / 220.0).clamp(0.0, 0.35))
-            : 1,
+        opacity: opacity,
         child: Transform.scale(
-          scale: thisScale,
+          scale: scale,
           alignment: Alignment.topCenter,
           child: GestureDetector(
             onTap: () {
