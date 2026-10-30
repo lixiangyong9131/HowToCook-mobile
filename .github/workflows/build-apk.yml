@@ -54,7 +54,8 @@ jobs:
           body: |
             HowToCook 移动端 ${{ github.ref_name }}
 
-            - 安装包：`app-release.apk`（debug-signed / Flutter 默认 release 签名，适合试用）
+            - 安装包：`app-release.apk`（`android/signing/howtocook-release.jks` 稳定签名，可覆盖安装更新）
+            - ≤ v0.6.18 为各 CI runner 的 debug 证书，升级到 v0.6.19+ 需先卸载一次
             - 菜谱来源：[Anduin2017/HowToCook](https://github.com/Anduin2017/HowToCook)（Unlicense）
             - UI 参考：[LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)
             - 安装前请在系统设置中允许「未知来源」安装应用

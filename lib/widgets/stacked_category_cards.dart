@@ -331,7 +331,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
             ],
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 20),
         AnimatedBuilder(
           animation: Listenable.merge([_fanCtrl, _coastCtrl]),
           builder: (context, _) {

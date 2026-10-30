@@ -15,6 +15,7 @@ import '../widgets/dish_cover_thumb.dart';
 import '../widgets/process_image_viewer.dart';
 import '../widgets/snap_timeline.dart';
 import '../widgets/squeeze_done_button.dart';
+import '../widgets/video_recipes_sheet.dart';
 
 class RecipeDetailScreen extends StatefulWidget {
   final Recipe recipe;
@@ -46,22 +47,21 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     super.initState();
     _parsed = parseRecipeMarkdown(widget.recipe.markdown);
     _mergedIngredients = _buildMergedIngredients();
+    // Index is loaded in main(); sync check so 做法大图 is first when available.
+    _hasProcessImage =
+        ProcessImageService.instance.hasImage(widget.recipe);
     _detailTabs = _computeTabs();
     _tabs = TabController(length: _detailTabs.length, vsync: this);
     _tabs.addListener(() {
       if (mounted && !_tabs.indexIsChanging) setState(() {});
     });
-    // Index is loaded in main(); sync check so Module1 does not flash 步骤
-    // then swap — that swap broke 做法大图 on the 最近浏览 cold path.
-    _hasProcessImage =
-        ProcessImageService.instance.hasImage(widget.recipe);
     if (!_hasProcessImage) {
       ProcessImageService.instance.ensureLoaded().then((_) {
         if (!mounted) return;
         final has = ProcessImageService.instance.hasImage(widget.recipe);
         if (has != _hasProcessImage) {
           _hasProcessImage = has;
-          _recreateTabs();
+          _recreateTabs(preferProcessImage: true);
         }
       });
     }
@@ -150,14 +150,12 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
 
   List<_DetailTab> _computeTabs() {
     final tabs = <_DetailTab>[];
-    // 做法大图 only when a process image exists.
-    if (_hasProcessImage) {
-      tabs.add(const _DetailTab(
-        label: '做法大图',
-        kind: _TabKind.processImage,
-      ));
-    }
-    // 文字步骤 as its own tab (after 做法大图 when both exist).
+    // 做法大图 always first (image viewer or empty placeholder).
+    tabs.add(const _DetailTab(
+      label: '做法大图',
+      kind: _TabKind.processImage,
+    ));
+    // 文字步骤 right after 做法大图.
     final steps = _stepsSection;
     if (steps != null && steps.items.isNotEmpty) {
       tabs.add(_DetailTab(
@@ -174,16 +172,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
         section: ing,
       ));
     }
-    if (tabs.isEmpty) {
-      tabs.add(const _DetailTab(
-        label: '做法',
-        kind: _TabKind.empty,
-      ));
-    }
     return tabs;
   }
 
-  void _recreateTabs() {
+  void _recreateTabs({bool preferProcessImage = false}) {
     final prevKind = _detailTabs.isEmpty
         ? null
         : _detailTabs[_tabs.index.clamp(0, _detailTabs.length - 1)].kind;
@@ -191,7 +183,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
       _detailTabs = _computeTabs();
       final old = _tabs;
       var idx = 0;
-      if (prevKind != null) {
+      if (preferProcessImage) {
+        final i = _detailTabs.indexWhere((e) => e.kind == _TabKind.processImage);
+        if (i >= 0) idx = i;
+      } else if (prevKind != null) {
         final i = _detailTabs.indexWhere((e) => e.kind == prevKind);
         if (i >= 0) idx = i;
       }
@@ -278,6 +273,13 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     _openTimerPicker(hint, stepIndex);
   }
 
+  void _openVideo() {
+    HapticFeedback.selectionClick();
+    showVideoRecipesSheet(
+      context,
+      dishName: _parsed.title.isNotEmpty ? _parsed.title : widget.recipe.title,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -299,6 +301,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                   iconTheme: const IconThemeData(color: Colors.white),
                   expandedHeight: 210,
                   actions: [
+                    IconButton(
+                      tooltip: '视频做法',
+                      onPressed: _openVideo,
+                      icon: const Icon(Icons.smart_display_outlined),
+                    ),
                     IconButton(
                       tooltip: fav ? '取消收藏' : '收藏',
                       onPressed: _toggleFavorite,
@@ -480,6 +487,31 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   Widget _buildTabBody(_DetailTab t) {
     switch (t.kind) {
       case _TabKind.processImage:
+        if (!_hasProcessImage) {
+          return const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.image_not_supported_outlined,
+                    size: 48, color: AppTheme.muted),
+                SizedBox(height: 12),
+                Text(
+                  '暂无做法大图',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.ink,
+                  ),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  '可切换到「文字步骤」查看做法',
+                  style: TextStyle(fontSize: 13, color: AppTheme.muted),
+                ),
+              ],
+            ),
+          );
+        }
         return ProcessImageViewer(
           key: ValueKey('process-${widget.recipe.id}'),
           loader: () => ProcessImageService.instance.loadFor(widget.recipe),

@@ -12,3 +12,9 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Project sideload keystore is tracked under signing/ (see SIGNING.md).
+# Keep generic keystore ignores above; force-add signing artifacts if needed.
+!signing/
+!signing/**
+
