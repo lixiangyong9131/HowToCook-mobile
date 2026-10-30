@@ -40,13 +40,23 @@ class ProcessImageService {
     final cat = recipe.categoryId;
     final title = recipe.title;
     final stem = p.basenameWithoutExtension(recipe.path);
+    // Nested upstream paths: aquatic/混合烤鱼/烤鱼.md → also try parent folder.
+    final parent = p.basename(p.dirname(recipe.path));
     final candidates = <String>{
       '$cat/$title',
       '$cat/$stem',
+      if (parent.isNotEmpty && parent != cat) '$cat/$parent',
+      if (parent.isNotEmpty && parent != cat) '$cat/$parent/$stem',
     };
     for (final c in candidates) {
       if (_keys.contains(c)) return c;
     }
+    // Last resort: unique title match across keys (rare id/path drift).
+    final suffix = '/$title';
+    final hits = _keys.where((k) => k.endsWith(suffix)).toList();
+    if (hits.length == 1) return hits.first;
+    final catHits = hits.where((k) => k.startsWith('$cat/')).toList();
+    if (catHits.length == 1) return catHits.first;
     return null;
   }
 
@@ -74,7 +84,7 @@ class ProcessImageService {
     try {
       final res = await http
           .get(Uri.parse(url), headers: {
-            'User-Agent': 'HowToCook-mobile/0.5',
+            'User-Agent': 'HowToCook-mobile/0.6.3',
             'Accept': 'image/jpeg,image/*;q=0.8',
           })
           .timeout(const Duration(seconds: 25));

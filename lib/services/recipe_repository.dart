@@ -4,6 +4,13 @@ import 'package:flutter/services.dart';
 
 import '../models/recipe.dart';
 
+/// Duck type for browse history rows (avoids importing history_store).
+abstract class BrowseEntryLike {
+  String get id;
+  String get title;
+  String get categoryId;
+}
+
 class RecipeRepository {
   RecipeRepository._();
   static final RecipeRepository instance = RecipeRepository._();
@@ -33,6 +40,30 @@ class RecipeRepository {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Resolve a 最近浏览 entry: id first, then title+categoryId, then title.
+  /// Guards against stale ids after a recipes_db rebuild.
+  Recipe? resolveBrowse(BrowseEntryLike entry) {
+    final byExact = byId(entry.id);
+    if (byExact != null) return byExact;
+    final db = _db;
+    if (db == null) return null;
+    final cat = entry.categoryId;
+    final title = entry.title;
+    if (cat.isNotEmpty && title.isNotEmpty) {
+      try {
+        return db.recipes.firstWhere(
+          (r) => r.categoryId == cat && r.title == title,
+        );
+      } catch (_) {}
+    }
+    if (title.isNotEmpty) {
+      try {
+        return db.recipes.firstWhere((r) => r.title == title);
+      } catch (_) {}
+    }
+    return null;
   }
 
   List<Recipe> search(String query) {

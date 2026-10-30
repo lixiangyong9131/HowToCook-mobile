@@ -178,7 +178,7 @@ class HomeScreen extends StatelessWidget {
                           entry: e,
                           onTap: () => openRecipeDetail(
                             context,
-                            recipeId: e.id,
+                            browse: e,
                           ),
                         );
                       },

@@ -43,15 +43,28 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     _mergedIngredients = _buildMergedIngredients();
     _detailTabs = _computeTabs();
     _tabs = TabController(length: _detailTabs.length, vsync: this);
-    ProcessImageService.instance.ensureLoaded().then((_) {
-      if (!mounted) return;
-      final has = ProcessImageService.instance.hasImage(widget.recipe);
-      setState(() => _hasProcessImage = has);
-    });
+    // Index is loaded in main(); sync check so Module1 does not flash 步骤
+    // then swap — that swap broke 做法大图 on the 最近浏览 cold path.
+    _hasProcessImage =
+        ProcessImageService.instance.hasImage(widget.recipe);
+    if (!_hasProcessImage) {
+      ProcessImageService.instance.ensureLoaded().then((_) {
+        if (!mounted) return;
+        final has = ProcessImageService.instance.hasImage(widget.recipe);
+        if (has != _hasProcessImage) {
+          setState(() => _hasProcessImage = has);
+        }
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final r = widget.recipe;
-      HistoryScope.of(context).addBrowse(
+      // Use maybeOf-style access after first frame; avoid depending on
+      // HistoryScope during build so addBrowse notify does not rebuild
+      // this detail (which previously tore down ProcessImageViewer).
+      final scope =
+          context.getInheritedWidgetOfExactType<HistoryScope>();
+      scope?.notifier?.addBrowse(
         id: r.id,
         title: r.title,
         categoryId: r.categoryId,
@@ -406,9 +419,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
       case _TabKind.cook:
         // Module 1: process image only (文字步骤备用已移除).
         if (_hasProcessImage) {
-          return ProcessImageViewer(
-            loader: () =>
-                ProcessImageService.instance.cachedFileFor(widget.recipe),
+          return SizedBox.expand(
+            child: ProcessImageViewer(
+              key: ValueKey('process-${widget.recipe.id}'),
+              loader: () =>
+                  ProcessImageService.instance.cachedFileFor(widget.recipe),
+              remoteUrl:
+                  ProcessImageService.instance.remoteUrlFor(widget.recipe),
+            ),
           );
         }
         if (t.section != null && t.section!.items.isNotEmpty) {

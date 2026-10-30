@@ -46,7 +46,7 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
     final bvid = _bvid;
     if (bvid.isEmpty) return widget.video.watchUrl;
     return 'https://player.bilibili.com/player.html'
-        '?bvid=$bvid&high_quality=1&danmaku=0&autoplay=0&as_wide=1';
+        '?bvid=$bvid&high_quality=1&danmaku=0&autoplay=1&as_wide=1';
   }
 
   String get _mobileUrl {
@@ -99,6 +99,22 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
         onPageFinished: (_) async {
           if (!mounted) return;
           setState(() => _loading = false);
+          // Autoplay nudge (mediaPlaybackRequiresUserGesture=false).
+          try {
+            await _controller.runJavaScript('''
+(function(){
+  try {
+    var v=document.querySelector('video');
+    if(v){ var p=v.play(); if(p&&p.catch) p.catch(function(){}); }
+    var sels=['.bpx-player-ctrl-play','.player-mobile-btn-start','.bilibili-player-video-btn-start'];
+    for (var j=0;j<sels.length;j++){
+      var b=document.querySelector(sels[j]);
+      if(b){ b.click(); break; }
+    }
+  } catch(e) {}
+})();
+''');
+          } catch (_) {}
           // Soften mobile chrome for m.bilibili mode.
           if (_mode == 1) {
             try {

@@ -227,8 +227,8 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
               height: 54,
               child: FilledButton(
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.navy,
-                  foregroundColor: AppTheme.neon,
+                  backgroundColor: AppTheme.coral,
+                  foregroundColor: AppTheme.navy,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(999),
                   ),
@@ -353,10 +353,10 @@ class RunningTimerBar extends StatelessWidget {
               height: 40,
               alignment: Alignment.center,
               decoration: const BoxDecoration(
-                color: AppTheme.neon,
+                color: AppTheme.coral,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.timer, color: AppTheme.navy, size: 20),
+              child: const Icon(Icons.timer, color: Colors.white, size: 20),
             ),
             const SizedBox(width: 12),
             Expanded(

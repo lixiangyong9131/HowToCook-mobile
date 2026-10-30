@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'recipe_repository.dart' show BrowseEntryLike;
+
 /// Persists search queries + recently browsed recipe ids (newest first).
 class HistoryStore extends ChangeNotifier {
   static const _searchKey = 'search_history_v1';
@@ -104,9 +106,12 @@ class HistoryStore extends ChangeNotifier {
   }
 }
 
-class BrowseEntry {
+class BrowseEntry implements BrowseEntryLike {
+  @override
   final String id;
+  @override
   final String title;
+  @override
   final String categoryId;
   final String categoryName;
   final int atMs;
