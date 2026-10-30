@@ -294,76 +294,100 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                     ),
                   ],
                   flexibleSpace: FlexibleSpaceBar(
-                    background: DishHeaderBackdrop(
-                      recipe: recipe,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 88, 20, 20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: color,
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  DoodleIcons.categoryIcon(
-                                    recipe.categoryId,
-                                    size: 18,
+                    background: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        DishHeaderBackdrop(
+                          recipe: recipe,
+                          child: Padding(
+                            // Keep title block above the cream overlap flap.
+                            padding: const EdgeInsets.fromLTRB(20, 88, 20, 56),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
                                   ),
-                                  const SizedBox(width: 6),
+                                  decoration: BoxDecoration(
+                                    color: color,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      DoodleIcons.categoryIcon(
+                                        recipe.categoryId,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        recipe.categoryName,
+                                        style: TextStyle(
+                                          color: isDarkCard(color)
+                                              ? Colors.white
+                                              : AppTheme.ink,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  _parsed.title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.6,
+                                    height: 1.1,
+                                  ),
+                                ),
+                                if (_parsed.difficulty != null) ...[
+                                  const SizedBox(height: 8),
                                   Text(
-                                    recipe.categoryName,
+                                    '难度 ${'★' * _parsed.difficulty!}${'☆' * (5 - _parsed.difficulty!)}',
                                     style: TextStyle(
-                                      color: isDarkCard(color)
-                                          ? Colors.white
-                                          : AppTheme.ink,
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 12,
+                                      color: Colors.white
+                                          .withValues(alpha: 0.85),
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ],
-                              ),
+                              ],
                             ),
-                            const SizedBox(height: 12),
-                            Text(
-                              _parsed.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 26,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.6,
-                                height: 1.1,
-                              ),
-                            ),
-                            if (_parsed.difficulty != null) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                '难度 ${'★' * _parsed.difficulty!}${'☆' * (5 - _parsed.difficulty!)}',
-                                style: TextStyle(
-                                  color:
-                                      Colors.white.withValues(alpha: 0.85),
-                                  fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        // Raise cream panel edge into the header so it covers
+                        // process-image title text peeking under the food photo.
+                        // Do not change the image crop — only the overlapping sheet.
+                        const Align(
+                          alignment: Alignment.bottomCenter,
+                          child: SizedBox(
+                            height: 52,
+                            width: double.infinity,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: AppTheme.bg,
+                                borderRadius: BorderRadius.vertical(
+                                  top: Radius.circular(24),
                                 ),
                               ),
-                            ],
-                          ],
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: ActionChip(

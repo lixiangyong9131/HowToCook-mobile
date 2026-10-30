@@ -17,7 +17,7 @@ class DishHeaderBackdrop extends StatelessWidget {
   });
 
   static const _ua = {
-    'User-Agent': 'HowToCook-mobile/0.6.13',
+    'User-Agent': 'HowToCook-mobile/0.6.14',
     'Accept': 'image/jpeg,image/*;q=0.8',
   };
 
