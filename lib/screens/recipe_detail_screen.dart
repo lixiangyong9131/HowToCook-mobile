@@ -15,7 +15,6 @@ import '../widgets/dish_cover_thumb.dart';
 import '../widgets/process_image_viewer.dart';
 import '../widgets/snap_timeline.dart';
 import '../widgets/squeeze_done_button.dart';
-import '../widgets/video_recipes_sheet.dart';
 
 class RecipeDetailScreen extends StatefulWidget {
   final Recipe recipe;
@@ -32,12 +31,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   late final List<_DetailTab> _detailTabs;
   late final RecipeSection? _mergedIngredients;
   Timer? _timer;
-  Duration? _remaining;
-  Duration? _total;
+  /// Isolated from setState so process image / header do not rebuild every tick.
+  final ValueNotifier<Duration?> _remainingN = ValueNotifier<Duration?>(null);
+  final ValueNotifier<Duration?> _totalN = ValueNotifier<Duration?>(null);
   double _favScale = 1;
   bool _hasProcessImage = false;
-  /// When true and a process image exists, show text steps instead.
-  bool _showTextSteps = false;
   /// Step indices whose timer finished → stamped 「计时已完成」.
   final Set<int> _timerDoneSteps = {};
   /// Which step the running timer belongs to (null = app-bar / free timer).
@@ -62,7 +60,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
         if (!mounted) return;
         final has = ProcessImageService.instance.hasImage(widget.recipe);
         if (has != _hasProcessImage) {
-          setState(() => _hasProcessImage = has);
+          _hasProcessImage = has;
+          _recreateTabs();
         }
       });
     }
@@ -151,13 +150,22 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
 
   List<_DetailTab> _computeTabs() {
     final tabs = <_DetailTab>[];
-    // Module 1 = 做法大图 (process image / steps fallback)
-    tabs.add(_DetailTab(
-      label: '做法大图',
-      kind: _TabKind.cook,
-      section: _stepsSection,
-    ));
-    // Module 2 = 必备原料和工具 (with calc merged)
+    // 做法大图 only when a process image exists.
+    if (_hasProcessImage) {
+      tabs.add(const _DetailTab(
+        label: '做法大图',
+        kind: _TabKind.processImage,
+      ));
+    }
+    // 文字步骤 as its own tab (after 做法大图 when both exist).
+    final steps = _stepsSection;
+    if (steps != null && steps.items.isNotEmpty) {
+      tabs.add(_DetailTab(
+        label: '文字步骤',
+        kind: _TabKind.steps,
+        section: steps,
+      ));
+    }
     final ing = _mergedIngredients;
     if (ing != null) {
       tabs.add(_DetailTab(
@@ -166,13 +174,44 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
         section: ing,
       ));
     }
-    // Intentionally omit 「计算」「附加内容」 and other misc sections.
+    if (tabs.isEmpty) {
+      tabs.add(const _DetailTab(
+        label: '做法',
+        kind: _TabKind.empty,
+      ));
+    }
     return tabs;
+  }
+
+  void _recreateTabs() {
+    final prevKind = _detailTabs.isEmpty
+        ? null
+        : _detailTabs[_tabs.index.clamp(0, _detailTabs.length - 1)].kind;
+    setState(() {
+      _detailTabs = _computeTabs();
+      final old = _tabs;
+      var idx = 0;
+      if (prevKind != null) {
+        final i = _detailTabs.indexWhere((e) => e.kind == prevKind);
+        if (i >= 0) idx = i;
+      }
+      _tabs = TabController(
+        length: _detailTabs.length,
+        vsync: this,
+        initialIndex: idx.clamp(0, _detailTabs.length - 1),
+      );
+      _tabs.addListener(() {
+        if (mounted && !_tabs.indexIsChanging) setState(() {});
+      });
+      old.dispose();
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _remainingN.dispose();
+    _totalN.dispose();
     _tabs.dispose();
     super.dispose();
   }
@@ -187,23 +226,23 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
 
   void _startTimer(Duration d, {int? stepIndex}) {
     _timer?.cancel();
-    setState(() {
-      _total = d;
-      _remaining = d;
-      _activeTimerStep = stepIndex;
-    });
+    _activeTimerStep = stepIndex;
+    _totalN.value = d;
+    _remainingN.value = d;
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (_remaining == null) return;
-      if (_remaining!.inSeconds <= 1) {
+      final rem = _remainingN.value;
+      if (rem == null) return;
+      if (rem.inSeconds <= 1) {
         t.cancel();
         final step = _activeTimerStep;
-        setState(() {
-          _remaining = Duration.zero;
-          if (step != null) {
-            _timerDoneSteps.add(step);
-            _activeTimerStep = null;
+        _remainingN.value = Duration.zero;
+        if (step != null) {
+          _activeTimerStep = null;
+          // Stamp only — avoids rebuilding process image every tick.
+          if (mounted) {
+            setState(() => _timerDoneSteps.add(step));
           }
-        });
+        }
         if (mounted) {
           HapticFeedback.heavyImpact();
           ScaffoldMessenger.of(context).showSnackBar(
@@ -215,18 +254,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
           );
         }
       } else {
-        setState(() => _remaining = _remaining! - const Duration(seconds: 1));
+        _remainingN.value = rem - const Duration(seconds: 1);
       }
     });
   }
 
   void _closeTimer() {
     _timer?.cancel();
-    setState(() {
-      _remaining = null;
-      _total = null;
-      _activeTimerStep = null;
-    });
+    _activeTimerStep = null;
+    _remainingN.value = null;
+    _totalN.value = null;
   }
 
   Future<void> _openTimerPicker([Duration? hint, int? stepIndex]) async {
@@ -241,13 +278,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     _openTimerPicker(hint, stepIndex);
   }
 
-  void _openVideo() {
-    HapticFeedback.selectionClick();
-    showVideoRecipesSheet(
-      context,
-      dishName: _parsed.title.isNotEmpty ? _parsed.title : widget.recipe.title,
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -269,11 +299,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                   iconTheme: const IconThemeData(color: Colors.white),
                   expandedHeight: 210,
                   actions: [
-                    IconButton(
-                      tooltip: '视频做法',
-                      onPressed: _openVideo,
-                      icon: const Icon(Icons.smart_display_outlined),
-                    ),
                     IconButton(
                       tooltip: fav ? '取消收藏' : '收藏',
                       onPressed: _toggleFavorite,
@@ -385,27 +410,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                     ),
                   ),
                 ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: ActionChip(
-                        avatar: const Icon(
-                          Icons.smart_display_rounded,
-                          size: 18,
-                          color: AppTheme.coral,
-                        ),
-                        label: const Text('视频做法'),
-                        onPressed: _openVideo,
-                        backgroundColor: Colors.white,
-                        side: BorderSide(
-                          color: AppTheme.coral.withValues(alpha: 0.35),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
                 if (_parsed.intro.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
@@ -452,17 +456,22 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               ],
             ),
           ),
-          if (_remaining != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: RunningTimerBar(
-                remaining: _remaining!,
-                total: _total ?? _remaining!,
-                onClose: _closeTimer,
-              ),
-            ),
+          ValueListenableBuilder<Duration?>(
+            valueListenable: _remainingN,
+            builder: (context, remaining, _) {
+              if (remaining == null) return const SizedBox.shrink();
+              return Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: RunningTimerBar(
+                  remaining: remaining,
+                  total: _totalN.value ?? remaining,
+                  onClose: _closeTimer,
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
@@ -470,116 +479,36 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
 
   Widget _buildTabBody(_DetailTab t) {
     switch (t.kind) {
-      case _TabKind.cook:
-        // Module 1: process image when available; otherwise text steps.
-        // With image: floating 文字步骤 / 做法大图 toggle.
-        final steps = t.section;
-        final hasSteps = steps != null && steps.items.isNotEmpty;
-        if (_hasProcessImage && !_showTextSteps) {
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              ProcessImageViewer(
-                key: ValueKey('process-${widget.recipe.id}'),
-                loader: () =>
-                    ProcessImageService.instance.loadFor(widget.recipe),
-                remoteUrl:
-                    ProcessImageService.instance.remoteUrlFor(widget.recipe),
-              ),
-              if (hasSteps)
-                Positioned(
-                  right: 14,
-                  bottom: 18,
-                  child: Material(
-                    elevation: 3,
-                    borderRadius: BorderRadius.circular(999),
-                    color: Colors.white,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(999),
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        setState(() => _showTextSteps = true);
-                      },
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.notes_rounded,
-                                size: 18, color: AppTheme.navy),
-                            SizedBox(width: 6),
-                            Text(
-                              '文字步骤',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: AppTheme.navy,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          );
-        }
-        if (steps != null && steps.items.isNotEmpty) {
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              _SectionBody(
-                section: steps,
-                isIngredient: false,
-                isSteps: true,
-                onPickTimer: _openTimerPicker,
-                onStartStepTimer: _startStepTimer,
-                timerCompletedSteps: _timerDoneSteps,
-              ),
-              if (_hasProcessImage)
-                Positioned(
-                  right: 14,
-                  bottom: 18,
-                  child: Material(
-                    elevation: 3,
-                    borderRadius: BorderRadius.circular(999),
-                    color: AppTheme.navy,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(999),
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        setState(() => _showTextSteps = false);
-                      },
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.image_outlined,
-                                size: 18, color: AppTheme.cream),
-                            SizedBox(width: 6),
-                            Text(
-                              '做法大图',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: AppTheme.cream,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          );
-        }
+      case _TabKind.processImage:
+        return ProcessImageViewer(
+          key: ValueKey('process-${widget.recipe.id}'),
+          loader: () => ProcessImageService.instance.loadFor(widget.recipe),
+          remoteUrl: ProcessImageService.instance.remoteUrlFor(widget.recipe),
+        );
+      case _TabKind.steps:
+        return _SectionBody(
+          section: t.section!,
+          isIngredient: false,
+          isSteps: true,
+          onPickTimer: _openTimerPicker,
+          onStartStepTimer: _startStepTimer,
+          timerCompletedSteps: _timerDoneSteps,
+        );
+      case _TabKind.ingredients:
+        return _SectionBody(
+          section: t.section!,
+          isIngredient: true,
+          isSteps: false,
+          onPickTimer: _openTimerPicker,
+          onAllIngredients: () {
+            final idx = _detailTabs.indexWhere(
+              (e) =>
+                  e.kind == _TabKind.steps || e.kind == _TabKind.processImage,
+            );
+            if (idx >= 0) _tabs.animateTo(idx);
+          },
+        );
+      case _TabKind.empty:
         return const Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -603,23 +532,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             ],
           ),
         );
-      case _TabKind.ingredients:
-        return _SectionBody(
-          section: t.section!,
-          isIngredient: true,
-          isSteps: false,
-          onPickTimer: _openTimerPicker,
-          onAllIngredients: () {
-            final idx =
-                _detailTabs.indexWhere((e) => e.kind == _TabKind.cook);
-            if (idx >= 0) _tabs.animateTo(idx);
-          },
-        );
     }
   }
 }
 
-enum _TabKind { ingredients, cook }
+enum _TabKind { processImage, steps, ingredients, empty }
 
 class _DetailTab {
   final String label;

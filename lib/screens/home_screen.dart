@@ -132,7 +132,7 @@ class HomeScreen extends StatelessWidget {
                               counts: counts,
                               initiallyExpanded: false,
                               autoFanOnMount: false,
-                              openOnSwipeSettle: true,
+                              openOnSwipeSettle: false,
                               showExpandButton: true,
                               onOpen: (cat) {
                                 Navigator.of(context).push(

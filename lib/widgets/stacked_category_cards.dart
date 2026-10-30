@@ -72,7 +72,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     _fanCtrl = AnimationController(
       vsync: this,
       duration: Duration(
-        milliseconds: 420 + widget.categories.length * 40,
+        milliseconds: 620 + widget.categories.length * 36,
       ),
       value: _expanded ? 1 : 0,
     );
@@ -158,18 +158,23 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   }
 
   void _expand() {
-    if (_expanded) return;
+    if (_expanded || _fanCtrl.isAnimating) return;
     _coastCtrl.stop();
     HapticFeedback.mediumImpact();
     setState(() => _expanded = true);
-    _fanCtrl.forward(from: 0);
+    _fanCtrl.animateTo(1, curve: Curves.easeInOutCubic);
   }
 
   void _collapse() {
-    if (!_expanded) return;
+    if (!_expanded || _fanCtrl.isAnimating) return;
     HapticFeedback.selectionClick();
-    setState(() => _expanded = false);
-    _fanCtrl.reverse();
+    // Keep fan layout until reverse finishes — avoids hard cut to wallet.
+    _fanCtrl.animateBack(0, curve: Curves.easeInOutCubic).whenComplete(() {
+      if (!mounted) return;
+      if (_fanCtrl.value <= 0.001) {
+        setState(() => _expanded = false);
+      }
+    });
   }
 
   void _toggle() => _expanded ? _collapse() : _expand();
@@ -283,20 +288,44 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
             ),
             if (widget.showExpandButton) ...[
               const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _toggle,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.navy,
-                  foregroundColor: AppTheme.cream,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
+              Material(
+                color: Colors.white,
+                elevation: 0,
+                shape: StadiumBorder(
+                  side: BorderSide(
+                    color: AppTheme.coral.withValues(alpha: 0.45),
                   ),
                 ),
-                child: Text(
-                  _expanded ? '叠起 ↑' : '展开 ↓',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                child: InkWell(
+                  customBorder: const StadiumBorder(),
+                  onTap: _toggle,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _expanded
+                              ? Icons.unfold_less_rounded
+                              : Icons.unfold_more_rounded,
+                          size: 18,
+                          color: AppTheme.coral,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          _expanded ? '叠起' : '展开',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                            color: AppTheme.navy,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -306,11 +335,15 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
         AnimatedBuilder(
           animation: Listenable.merge([_fanCtrl, _coastCtrl]),
           builder: (context, _) {
-            final height =
-                collapsedH + (expandedH - collapsedH) * _fanCtrl.value;
+            final tFan = Curves.easeInOutCubic.transform(
+              _fanCtrl.value.clamp(0.0, 1.0),
+            );
+            final height = collapsedH + (expandedH - collapsedH) * tFan;
+            // Fan while expanded or mid-animation; wallet only when fully folded.
+            final showFan = _expanded || _fanCtrl.value > 0.001;
             return SizedBox(
               height: height + 8,
-              child: _expanded ? _buildExpanded(n) : _buildWallet(n),
+              child: showFan ? _buildExpanded(n) : _buildWallet(n),
             );
           },
         ),
@@ -329,14 +362,14 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
 
   Widget _buildFanCard(int i, int n) {
     final cat = widget.categories[i];
-    final start = (i * 40) / (_fanCtrl.duration?.inMilliseconds ?? 1);
-    final end = (start + 0.55).clamp(0.0, 1.0);
+    final start = (i * 48) / (_fanCtrl.duration?.inMilliseconds ?? 1);
+    final end = (start + 0.62).clamp(0.0, 1.0);
     final local = Curves.easeOutCubic.transform(
       ((_fanCtrl.value - start) / (end - start).clamp(0.001, 1.0))
           .clamp(0.0, 1.0),
     );
     final t =
-        Curves.easeOutBack.transform(local.clamp(0.0, 1.0)).clamp(0.0, 1.15);
+        Curves.easeInOutCubic.transform(local.clamp(0.0, 1.0)).clamp(0.0, 1.0);
     final stackTop = i * _peek;
     final listTop = i * (_cardH + _gap);
     final top = stackTop + (listTop - stackTop) * t.clamp(0.0, 1.0);
