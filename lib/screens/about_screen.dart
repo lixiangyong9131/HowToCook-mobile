@@ -163,6 +163,7 @@ class _AboutScreenState extends State<AboutScreen> {
                       'assets/branding/app_icon_512.png',
                       width: 64,
                       height: 64,
+                      fit: BoxFit.cover,
                     ),
                   ),
                   const SizedBox(width: 14),

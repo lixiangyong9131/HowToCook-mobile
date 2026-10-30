@@ -17,6 +17,39 @@ class CategoriesScreen extends StatefulWidget {
 
 class _CategoriesScreenState extends State<CategoriesScreen> {
   @override
+  void initState() {
+    super.initState();
+    final id = widget.highlightId;
+    if (id != null && id.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final cats = RecipeRepository.instance.db?.categories ?? const [];
+        CategoryInfo? match;
+        for (final c in cats) {
+          if (c.id == id) {
+            match = c;
+            break;
+          }
+        }
+        if (match == null) return;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => CategoryRecipesScreen(category: match!),
+          ),
+        );
+      });
+    }
+  }
+
+  void _openCategory(CategoryInfo cat) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CategoryRecipesScreen(category: cat),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final db = RecipeRepository.instance.db!;
     final cats = db.categories;
@@ -85,13 +118,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
                   counts: counts,
                   initiallyExpanded: true,
                   autoFanOnMount: true,
-                  onOpen: (CategoryInfo cat) {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => CategoryRecipesScreen(category: cat),
-                      ),
-                    );
-                  },
+                  onOpen: _openCategory,
                 ),
               ),
             ),

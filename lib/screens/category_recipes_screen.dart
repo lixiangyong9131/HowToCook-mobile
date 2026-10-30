@@ -11,6 +11,15 @@ class CategoryRecipesScreen extends StatelessWidget {
   final CategoryInfo category;
   const CategoryRecipesScreen({super.key, required this.category});
 
+  void _openRecipe(BuildContext context, Recipe r, Offset origin, Color accent) {
+    CircularRevealRoute.open(
+      context,
+      page: RecipeDetailScreen(recipe: r),
+      from: origin,
+      veilColor: isDarkCard(accent) ? accent : AppTheme.purple,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final recipes = RecipeRepository.instance.byCategory(category.id)
@@ -85,28 +94,11 @@ class CategoryRecipesScreen extends StatelessWidget {
                 separatorBuilder: (_, __) => const SizedBox(height: 10),
                 itemBuilder: (context, i) {
                   final r = recipes[i];
-                  return Builder(
-                    builder: (ctx) {
-                      return RecipeCard(
-                        index: i + 1,
-                        recipe: r,
-                        accent: accent,
-                        onTap: () {
-                          final box = ctx.findRenderObject() as RenderBox?;
-                          final origin = box?.localToGlobal(
-                            box.size.center(Offset.zero),
-                          );
-                          CircularRevealRoute.open(
-                            context,
-                            page: RecipeDetailScreen(recipe: r),
-                            from: origin,
-                            veilColor: isDarkCard(accent)
-                                ? accent
-                                : AppTheme.blackCard,
-                          );
-                        },
-                      );
-                    },
+                  return RecipeCard(
+                    index: i + 1,
+                    recipe: r,
+                    accent: accent,
+                    onTap: (origin) => _openRecipe(context, r, origin, accent),
                   );
                 },
               ),

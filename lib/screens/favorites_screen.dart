@@ -93,27 +93,17 @@ class FavoritesScreen extends StatelessWidget {
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
                       itemBuilder: (context, i) {
                         final r = recipes[i];
-                        return Builder(
-                          builder: (ctx) {
-                            return RecipeCard(
-                              index: i + 1,
-                              recipe: r,
-                              accent: categoryColors[r.categoryId] ??
-                                  AppTheme.neon,
-                              showCategory: true,
-                              onTap: () {
-                                final box =
-                                    ctx.findRenderObject() as RenderBox?;
-                                final origin = box?.localToGlobal(
-                                      box.size.center(Offset.zero),
-                                    ) ??
-                                    Offset.zero;
-                                CircularRevealRoute.open(
-                                  context,
-                                  page: RecipeDetailScreen(recipe: r),
-                                  from: origin,
-                                );
-                              },
+                        return RecipeCard(
+                          index: i + 1,
+                          recipe: r,
+                          accent: categoryColors[r.categoryId] ?? AppTheme.neon,
+                          showCategory: true,
+                          onTap: (origin) {
+                            CircularRevealRoute.open(
+                              context,
+                              page: RecipeDetailScreen(recipe: r),
+                              from: origin,
+                              veilColor: AppTheme.purple,
                             );
                           },
                         );

@@ -110,26 +110,17 @@ class _SearchScreenState extends State<SearchScreen> {
                           categoryColors[r.categoryId] ?? AppTheme.neon;
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
-                        child: Builder(
-                          builder: (ctx) {
-                            return RecipeCard(
-                              index: e.key + 1,
-                              recipe: r,
-                              accent: color,
-                              showCategory: true,
-                              onTap: () {
-                                final box =
-                                    ctx.findRenderObject() as RenderBox?;
-                                final origin = box?.localToGlobal(
-                                      box.size.center(Offset.zero),
-                                    );
-                                CircularRevealRoute.open(
-                                  context,
-                                  page: RecipeDetailScreen(recipe: r),
-                                  from: origin,
-                                  veilColor: AppTheme.purple,
-                                );
-                              },
+                        child: RecipeCard(
+                          index: e.key + 1,
+                          recipe: r,
+                          accent: color,
+                          showCategory: true,
+                          onTap: (origin) {
+                            CircularRevealRoute.open(
+                              context,
+                              page: RecipeDetailScreen(recipe: r),
+                              from: origin,
+                              veilColor: AppTheme.purple,
                             );
                           },
                         ),

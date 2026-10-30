@@ -6,7 +6,7 @@
 
 ## 功能
 
-交互参考微信小程序 [LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)。**v0.4.0** 围绕 Logo 配色重做，并强化六种动效：
+交互参考微信小程序 [LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)。**v0.4.1** 围绕 Logo 配色重做，并强化六种动效：
 
 - **Logo / 主题**：紫→珊瑚渐变 `#8B7CFF→#FF7A85`、霓虹绿 `#39FF5A`、深蓝 `#1A1F3A`、丁香底 `#F3F0FF`；卡片左侧渐变条 + 紫色柔影
 - **首页**：搜索框 → 搜索历史 → 最近浏览（倒序）；分类改为独立「分类浏览」页（叠卡展开）

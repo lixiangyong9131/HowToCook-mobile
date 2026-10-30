@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// Interaction 6 — circular clip reveal expanding from [center] (global).
+/// Slowed + softened to avoid harsh flash (晃眼).
 class CircularRevealRoute<T> extends PageRouteBuilder<T> {
   final Widget page;
   final Offset center;
@@ -15,8 +16,8 @@ class CircularRevealRoute<T> extends PageRouteBuilder<T> {
     super.settings,
   }) : super(
           pageBuilder: (context, animation, secondary) => page,
-          transitionDuration: const Duration(milliseconds: 450),
-          reverseTransitionDuration: const Duration(milliseconds: 380),
+          transitionDuration: const Duration(milliseconds: 820),
+          reverseTransitionDuration: const Duration(milliseconds: 560),
           opaque: false,
           barrierDismissible: false,
           transitionsBuilder: (context, animation, secondary, child) {
@@ -42,7 +43,7 @@ class CircularRevealRoute<T> extends PageRouteBuilder<T> {
   }) {
     final box = context.findRenderObject() as RenderBox?;
     final origin = from ??
-        (box != null
+        (box != null && box.hasSize
             ? box.localToGlobal(box.size.center(Offset.zero))
             : MediaQuery.sizeOf(context).center(Offset.zero));
     return Navigator.of(context).push(
@@ -76,20 +77,32 @@ class _CircularReveal extends StatelessWidget {
         final size = MediaQuery.sizeOf(context);
         final maxR = _maxRadius(size, center);
         final t = animation.value;
-        // First half: expanding dark veil; second: reveal page through clip.
-        final veilT = (t / 0.45).clamp(0.0, 1.0);
-        final pageT = ((t - 0.18) / 0.82).clamp(0.0, 1.0);
+        // Soft veil expands first; page follows with overlap + fade.
+        final veilT = Curves.easeOut.transform((t / 0.55).clamp(0.0, 1.0));
+        final pageT = Curves.easeOutCubic.transform(
+          ((t - 0.12) / 0.88).clamp(0.0, 1.0),
+        );
+        // Opacity ramp — never a harsh near-opaque flash.
+        final veilAlpha = (0.55 * (1.0 - pageT * 0.85)).clamp(0.0, 0.55);
+        final pageFade = Curves.easeOut.transform(
+          ((t - 0.08) / 0.55).clamp(0.0, 1.0),
+        );
         return Stack(
           fit: StackFit.expand,
           children: [
-            if (veilT < 1)
+            if (veilAlpha > 0.02)
               ClipPath(
                 clipper: _CircleClipper(center: center, radius: maxR * veilT),
-                child: ColoredBox(color: veilColor.withValues(alpha: 0.98)),
+                child: ColoredBox(
+                  color: veilColor.withValues(alpha: veilAlpha),
+                ),
               ),
             ClipPath(
               clipper: _CircleClipper(center: center, radius: maxR * pageT),
-              child: child,
+              child: Opacity(
+                opacity: pageFade,
+                child: child,
+              ),
             ),
           ],
         );
@@ -119,8 +132,7 @@ class _CircleClipper extends CustomClipper<Path> {
 
   @override
   Path getClip(Size size) {
-    return Path()
-      ..addOval(Rect.fromCircle(center: center, radius: radius));
+    return Path()..addOval(Rect.fromCircle(center: center, radius: radius));
   }
 
   @override

@@ -6,6 +6,7 @@ import '../services/history_store.dart';
 import '../services/recipe_repository.dart';
 import '../theme/app_theme.dart';
 import 'categories_screen.dart';
+import 'category_recipes_screen.dart';
 import 'recipe_detail_screen.dart';
 import 'search_screen.dart';
 
@@ -39,6 +40,7 @@ class HomeScreen extends StatelessWidget {
                                 'assets/branding/app_icon_512.png',
                                 width: 40,
                                 height: 40,
+                                fit: BoxFit.cover,
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -99,8 +101,8 @@ class HomeScreen extends StatelessWidget {
                                           Navigator.of(context).push(
                                             MaterialPageRoute(
                                               builder: (_) =>
-                                                  CategoriesScreen(
-                                                highlightId: c.id,
+                                                  CategoryRecipesScreen(
+                                                category: c,
                                               ),
                                             ),
                                           );
