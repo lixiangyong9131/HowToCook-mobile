@@ -14,6 +14,10 @@ class StackedCategoryCards extends StatefulWidget {
   final ValueChanged<CategoryInfo> onOpen;
   final bool initiallyExpanded;
   final bool autoFanOnMount;
+  /// After a swipe settles on a new front card, call [onOpen] with it.
+  final bool openOnSwipeSettle;
+  /// Show 展开/叠起 control (false = wallet-only folded UX).
+  final bool showExpandButton;
 
   const StackedCategoryCards({
     super.key,
@@ -22,6 +26,8 @@ class StackedCategoryCards extends StatefulWidget {
     required this.onOpen,
     this.initiallyExpanded = false,
     this.autoFanOnMount = false,
+    this.openOnSwipeSettle = false,
+    this.showExpandButton = true,
   });
 
   @override
@@ -122,6 +128,10 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
       _cycling = false;
       _swipeCtrl.value = 0;
     });
+    if (widget.openOnSwipeSettle && _n > 0) {
+      final selected = widget.categories[_front];
+      widget.onOpen(selected);
+    }
   }
 
   void _onVerticalDragUpdate(DragUpdateDetails d) {
@@ -158,7 +168,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
         Row(
           children: [
             const Text(
-              '分类',
+              '分类浏览',
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
             ),
             const Spacer(),
@@ -170,30 +180,34 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
                 color: AppTheme.muted,
               ),
             ),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: _toggle,
-              style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.navy,
-                foregroundColor: AppTheme.cream,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(999),
+            if (widget.showExpandButton) ...[
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: _toggle,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.navy,
+                  foregroundColor: AppTheme.cream,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                child: Text(
+                  _expanded ? '叠起 ↑' : '展开 ↓',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
-              child: Text(
-                _expanded ? '叠起 ↑' : '展开 ↓',
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-            ),
+            ],
           ],
         ),
         const SizedBox(height: 6),
         if (!_expanded)
-          const Text(
-            '上滑切换下一张 · 点按打开',
-            style: TextStyle(
+          Text(
+            widget.openOnSwipeSettle
+                ? '上滑选定并打开 · 点按打开当前'
+                : '上滑切换下一张 · 点按打开',
+            style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: AppTheme.muted,

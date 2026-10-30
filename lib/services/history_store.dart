@@ -8,7 +8,7 @@ class HistoryStore extends ChangeNotifier {
   static const _searchKey = 'search_history_v1';
   static const _browseKey = 'browse_history_v1';
   static const maxSearch = 20;
-  static const maxBrowse = 40;
+  static const maxBrowse = 20;
 
   final List<String> _searches = [];
   final List<BrowseEntry> _browses = [];
@@ -31,8 +31,17 @@ class HistoryStore extends ChangeNotifier {
         _browses.add(BrowseEntry.fromJson(m));
       } catch (_) {/* skip bad */}
     }
+    // Cap at maxBrowse (trim oldest = end of newest-first list)
+    var trimmed = false;
+    while (_browses.length > maxBrowse) {
+      _browses.removeLast();
+      trimmed = true;
+    }
     _loaded = true;
     notifyListeners();
+    if (trimmed) {
+      await _persistBrowse();
+    }
   }
 
   Future<void> addSearch(String query) async {

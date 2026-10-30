@@ -6,11 +6,11 @@ import '../services/history_store.dart';
 import '../services/recipe_repository.dart';
 import '../theme/app_theme.dart';
 import '../theme/doodle_icons.dart';
-import 'categories_screen.dart';
+import '../widgets/stacked_category_cards.dart';
 import 'category_recipes_screen.dart';
 import 'search_screen.dart';
 
-/// Home = search pill → 搜索历史 → 最近浏览 (newest first).
+/// Home = search → history chips → Wallet 分类叠卡 → 最近浏览.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -61,87 +61,94 @@ class HomeScreen extends StatelessWidget {
                           onTap: () => _openSearch(context),
                           onSubmit: (q) => _openSearch(context, initial: q),
                         ),
-                        const SizedBox(height: 12),
-                        // Light category chips (secondary, not hero)
-                        SizedBox(
-                          height: 36,
-                          child: ListView(
-                            scrollDirection: Axis.horizontal,
+                        // Search history chips directly under search (quick re-query)
+                        if (history.searches.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Row(
                             children: [
-                              _FilterChip(
-                                label: '分类浏览',
-                                filled: true,
-                                onTap: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => const CategoriesScreen(),
-                                    ),
-                                  );
-                                },
+                              const Text(
+                                '搜索历史',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.muted,
+                                ),
                               ),
-                              const SizedBox(width: 8),
-                              ...?RecipeRepository.instance.db?.categories
-                                  .take(8)
-                                  .map(
-                                    (c) => Padding(
-                                      padding: const EdgeInsets.only(right: 8),
-                                      child: _FilterChip(
-                                        label: c.name,
-                                        leading: DoodleIcons.categoryIcon(
-                                          c.id,
-                                          size: 20,
-                                        ),
-                                        onTap: () {
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  CategoryRecipesScreen(
-                                                category: c,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
+                              const Spacer(),
+                              GestureDetector(
+                                onTap: () => history.clearSearches(),
+                                child: const Text(
+                                  '清空',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.coral,
                                   ),
+                                ),
+                              ),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: 22),
-                        _SectionHeader(
-                          title: '搜索历史',
-                          action: history.searches.isEmpty
-                              ? null
-                              : '清空',
-                          onAction: history.searches.isEmpty
-                              ? null
-                              : () => history.clearSearches(),
-                        ),
-                        const SizedBox(height: 10),
-                        if (history.searches.isEmpty)
-                          const _EmptyHint(text: '搜索过的关键词会出现在这里')
-                        else
+                          const SizedBox(height: 8),
                           Wrap(
                             spacing: 8,
                             runSpacing: 8,
                             children: [
-                              for (final q in history.searches)
+                              for (final q in history.searches.take(12))
                                 ActionChip(
                                   label: Text(q),
                                   backgroundColor: Colors.white,
                                   side: BorderSide(
-                                    color: AppTheme.purple.withValues(alpha: 0.25),
+                                    color:
+                                        AppTheme.coral.withValues(alpha: 0.28),
                                   ),
-                                  avatar: const Icon(Icons.history, size: 16),
+                                  avatar: const Icon(
+                                    Icons.history,
+                                    size: 16,
+                                    color: AppTheme.coral,
+                                  ),
                                   onPressed: () =>
                                       _openSearch(context, initial: q),
                                 ),
                             ],
                           ),
+                        ],
+                        const SizedBox(height: 22),
+                        // Wallet-style folded category stack on home
+                        Builder(
+                          builder: (context) {
+                            final db = RecipeRepository.instance.db;
+                            if (db == null || db.categories.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+                            final cats = db.categories;
+                            final counts = <String, int>{
+                              for (final c in cats)
+                                c.id: RecipeRepository.instance
+                                    .byCategory(c.id)
+                                    .length,
+                            };
+                            return StackedCategoryCards(
+                              categories: cats,
+                              counts: counts,
+                              initiallyExpanded: false,
+                              autoFanOnMount: false,
+                              openOnSwipeSettle: true,
+                              showExpandButton: true,
+                              onOpen: (cat) {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        CategoryRecipesScreen(category: cat),
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        ),
                         const SizedBox(height: 26),
                         _SectionHeader(
                           title: '最近浏览',
-                          subtitle: '倒序 · 最新在上',
+                          subtitle: '最多 20 条 · 最新在上',
                           action: history.browses.isEmpty ? null : '清空',
                           onAction: history.browses.isEmpty
                               ? null
@@ -195,56 +202,6 @@ class HomeScreen extends StatelessWidget {
 }
 
 
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-  final bool filled;
-  final Widget? leading;
-  const _FilterChip({
-    required this.label,
-    required this.onTap,
-    this.filled = false,
-    this.leading,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: filled ? AppTheme.coral : Colors.white,
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
-            border: filled
-                ? null
-                : Border.all(color: AppTheme.navy.withValues(alpha: 0.12)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (leading != null) ...[
-                leading!,
-                const SizedBox(width: 6),
-              ],
-              Text(
-                label,
-                style: TextStyle(
-                  color: filled ? Colors.white : AppTheme.navy,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _SearchPill extends StatefulWidget {
   final VoidCallback onTap;

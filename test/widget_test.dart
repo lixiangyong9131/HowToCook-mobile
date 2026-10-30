@@ -22,7 +22,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('程序员做饭指南'), findsWidgets);
-    expect(find.text('搜索历史'), findsOneWidget);
+    expect(find.text('分类浏览'), findsOneWidget);
     expect(find.text('最近浏览'), findsOneWidget);
   });
 }
