@@ -236,15 +236,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
       body: Stack(
         children: [
           NestedScrollView(
-            // Lock outer vertical scroll on 做法大图 so pull-up enlarge
-            // GestureDetector wins (otherwise NestedScrollView steals flings).
-            physics: (_hasProcessImage &&
-                    _detailTabs.isNotEmpty &&
-                    _detailTabs[_tabs.index.clamp(0, _detailTabs.length - 1)]
-                            .kind ==
-                        _TabKind.cook)
-                ? const NeverScrollableScrollPhysics()
-                : const ClampingScrollPhysics(),
             headerSliverBuilder: (context, inner) {
               return [
                 SliverAppBar(

@@ -7,12 +7,12 @@ import 'package:flutter/services.dart';
 import '../services/process_image_service.dart';
 import '../theme/app_theme.dart';
 
-/// 做法大图 viewer.
+/// Zoomable full-process recipe card (9:16 AI infographic).
 ///
-/// **Pull-up enlarge (restored):** dragging upward continuously scales the
-/// image (progressive). Releasing past a threshold / with upward fling
-/// completes the same **maximize** as tap — a fullscreen viewer. This is
-/// NOT InteractiveViewer pinch-zoom on tap.
+/// Restored from [eaa0006] InteractiveViewer pan/pinch (the working 上滑
+/// browse-through-image behavior before tap-fullscreen was added in
+/// 05242b9). Tap opens the same fullscreen maximize route as a committed
+/// upward fling — not a separate inline zoom.
 class ProcessImageViewer extends StatefulWidget {
   final Future<File?> Function() loader;
   final String? remoteUrl;
@@ -29,32 +29,20 @@ class ProcessImageViewer extends StatefulWidget {
   State<ProcessImageViewer> createState() => _ProcessImageViewerState();
 }
 
-class _ProcessImageViewerState extends State<ProcessImageViewer>
-    with SingleTickerProviderStateMixin {
+class _ProcessImageViewerState extends State<ProcessImageViewer> {
   late Future<File?> _future;
+  final _transform = TransformationController();
 
-  /// Accumulated upward drag in logical pixels (0 = rest).
-  double _pullPx = 0;
-  late final AnimationController _pullBackCtrl;
-  double _pullBackFrom = 0;
-
-  static const _pullPerScale = 240.0; // px → +1.0 scale
-  static const _maxPullScale = 1.55;
-  static const _commitScale = 1.18; // release above this → maximize
-  static const _commitVelocity = -420.0; // px/s upward
+  /// Restored from eaa0006 — track scale so we only maximize at identity.
+  bool get _isIdentity {
+    final scale = _transform.value.getMaxScaleOnAxis();
+    return (scale - 1.0).abs() < 0.08;
+  }
 
   @override
   void initState() {
     super.initState();
     _future = widget.loader();
-    _pullBackCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 220),
-    )..addListener(() {
-        setState(() {
-          _pullPx = _pullBackFrom * (1.0 - _pullBackCtrl.value);
-        });
-      });
   }
 
   @override
@@ -67,47 +55,26 @@ class _ProcessImageViewerState extends State<ProcessImageViewer>
 
   @override
   void dispose() {
-    _pullBackCtrl.dispose();
+    _transform.dispose();
     super.dispose();
   }
 
   void _retry() {
-    setState(() => _future = widget.loader());
+    setState(() {
+      _future = widget.loader();
+    });
   }
 
-  double get _pullScale =>
-      (1.0 + _pullPx / _pullPerScale).clamp(1.0, _maxPullScale);
-
-  void _onPullUpdate(DragUpdateDetails d) {
-    // Only upward drag enlarges (negative dy in Flutter).
-    final dy = d.delta.dy;
-    if (dy < 0) {
-      setState(() => _pullPx = (_pullPx - dy).clamp(0.0, _pullPerScale * 1.2));
-    } else if (_pullPx > 0) {
-      setState(() => _pullPx = (_pullPx - dy).clamp(0.0, _pullPerScale * 1.2));
-    }
-  }
-
-  void _onPullEnd(DragEndDetails d, Widget imageChild) {
-    final v = d.primaryVelocity ?? 0;
-    if (_pullScale >= _commitScale || v < _commitVelocity) {
-      _maximize(imageChild);
-    } else {
-      _pullBackFrom = _pullPx;
-      _pullBackCtrl.forward(from: 0);
-    }
-  }
-
-  /// Same maximize end-state for completed pull-up and tap.
+  /// Shared maximize path: tap and committed swipe-up fling both call this.
   void _maximize(Widget imageChild) {
+    if (!_isIdentity) return;
     HapticFeedback.lightImpact();
-    _pullPx = 0;
-    _pullBackCtrl.stop();
+    _transform.value = Matrix4.identity();
     Navigator.of(context).push(
       PageRouteBuilder<void>(
         opaque: false,
         barrierColor: Colors.black87,
-        transitionDuration: const Duration(milliseconds: 280),
+        transitionDuration: const Duration(milliseconds: 260),
         reverseTransitionDuration: const Duration(milliseconds: 220),
         pageBuilder: (ctx, anim, _) {
           return FadeTransition(
@@ -116,9 +83,7 @@ class _ProcessImageViewerState extends State<ProcessImageViewer>
           );
         },
       ),
-    ).then((_) {
-      if (mounted) setState(() => _pullPx = 0);
-    });
+    );
   }
 
   @override
@@ -147,43 +112,50 @@ class _ProcessImageViewerState extends State<ProcessImageViewer>
           if (file == null) {
             final url = widget.remoteUrl;
             if (url != null && url.isNotEmpty) {
-              final net = Image.network(
-                url,
-                fit: BoxFit.contain,
-                width: double.infinity,
-                filterQuality: FilterQuality.high,
-                headers: const {
-                  'User-Agent': 'HowToCook-mobile/0.6.5',
-                  'Accept': 'image/jpeg,image/*;q=0.8',
-                },
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return const Center(
-                    child: CircularProgressIndicator(color: AppTheme.navy),
-                  );
-                },
-                errorBuilder: (_, __, ___) => _Unavailable(
-                  onRetry: _retry,
-                  onFallbackSteps: widget.onFallbackSteps,
-                ),
-              );
-              return _PullEnlargeImage(
-                scale: _pullScale,
-                pullProgress: ((_pullScale - 1) / (_maxPullScale - 1))
-                    .clamp(0.0, 1.0),
-                onTap: () => _maximize(net),
-                onVerticalDragUpdate: _onPullUpdate,
-                onVerticalDragEnd: (d) => _onPullEnd(d, net),
-                child: net,
+              return _NetworkProcessImage(
+                url: url,
+                transform: _transform,
+                onRetry: _retry,
+                onFallbackSteps: widget.onFallbackSteps,
+                onMaximize: _maximize,
               );
             }
-            return _Unavailable(
-              onRetry: _retry,
-              onFallbackSteps: widget.onFallbackSteps,
+            // Keep 「暂无图片」 placeholder from b2b6f70.
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('暂无图片',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 8),
+                    Text(
+                      ProcessImageService.attribution,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: AppTheme.muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (widget.onFallbackSteps != null)
+                      TextButton(
+                        onPressed: widget.onFallbackSteps,
+                        child: const Text('返回步骤'),
+                      ),
+                    TextButton(
+                      onPressed: _retry,
+                      child: const Text('重试下载'),
+                    ),
+                  ],
+                ),
+              ),
             );
           }
 
-          final fileImg = Image.file(
+          final img = Image.file(
             file,
             fit: BoxFit.contain,
             width: double.infinity,
@@ -192,14 +164,10 @@ class _ProcessImageViewerState extends State<ProcessImageViewer>
               child: Text('图片损坏，请重试下载'),
             ),
           );
-          return _PullEnlargeImage(
-            scale: _pullScale,
-            pullProgress:
-                ((_pullScale - 1) / (_maxPullScale - 1)).clamp(0.0, 1.0),
-            onTap: () => _maximize(fileImg),
-            onVerticalDragUpdate: _onPullUpdate,
-            onVerticalDragEnd: (d) => _onPullEnd(d, fileImg),
-            child: fileImg,
+          return _ZoomableImage(
+            transform: _transform,
+            onMaximize: () => _maximize(img),
+            child: img,
           );
         },
       ),
@@ -207,63 +175,96 @@ class _ProcessImageViewerState extends State<ProcessImageViewer>
   }
 }
 
-class _Unavailable extends StatelessWidget {
+class _NetworkProcessImage extends StatelessWidget {
+  final String url;
+  final TransformationController transform;
   final VoidCallback onRetry;
   final VoidCallback? onFallbackSteps;
+  final void Function(Widget imageChild) onMaximize;
 
-  const _Unavailable({required this.onRetry, this.onFallbackSteps});
+  const _NetworkProcessImage({
+    required this.url,
+    required this.transform,
+    required this.onRetry,
+    required this.onMaximize,
+    this.onFallbackSteps,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('暂无图片',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            Text(
-              ProcessImageService.attribution,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppTheme.muted, fontSize: 12),
-            ),
-            const SizedBox(height: 12),
-            if (onFallbackSteps != null)
-              TextButton(
-                onPressed: onFallbackSteps,
-                child: const Text('返回步骤'),
+    final net = Image.network(
+      url,
+      fit: BoxFit.contain,
+      width: double.infinity,
+      filterQuality: FilterQuality.high,
+      headers: const {
+        'User-Agent': 'HowToCook-mobile/0.6.6',
+        'Accept': 'image/jpeg,image/*;q=0.8',
+      },
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return const Center(
+          child: CircularProgressIndicator(color: AppTheme.navy),
+        );
+      },
+      errorBuilder: (_, __, ___) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('暂无图片',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              Text(
+                ProcessImageService.attribution,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppTheme.muted, fontSize: 12),
               ),
-            TextButton(
-              onPressed: onRetry,
-              child: const Text('重试下载'),
-            ),
-          ],
+              const SizedBox(height: 12),
+              if (onFallbackSteps != null)
+                TextButton(
+                  onPressed: onFallbackSteps,
+                  child: const Text('返回步骤'),
+                ),
+              TextButton(
+                onPressed: onRetry,
+                child: const Text('重试下载'),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+    return _ZoomableImage(
+      transform: transform,
+      onMaximize: () => onMaximize(net),
+      child: net,
     );
   }
 }
 
-/// Inline image with progressive pull-up scale + tap maximize.
-/// No InteractiveViewer here — pinch/zoom only after maximize.
-class _PullEnlargeImage extends StatelessWidget {
+/// eaa0006 InteractiveViewer core + non-interfering tap / upward-fling maximize.
+///
+/// Vertical *pan* stays on InteractiveViewer (restored 上滑浏览). We only
+/// listen for a quick upward *fling* at identity scale via
+/// [onInteractionEnd] velocity — not a competing Drag gesture that would
+/// steal pans the way 05242b9+ did.
+class _ZoomableImage extends StatelessWidget {
+  final TransformationController transform;
   final Widget child;
-  final double scale;
-  final double pullProgress;
-  final VoidCallback onTap;
-  final GestureDragUpdateCallback onVerticalDragUpdate;
-  final GestureDragEndCallback onVerticalDragEnd;
+  final VoidCallback onMaximize;
 
-  const _PullEnlargeImage({
+  const _ZoomableImage({
+    required this.transform,
     required this.child,
-    required this.scale,
-    required this.pullProgress,
-    required this.onTap,
-    required this.onVerticalDragUpdate,
-    required this.onVerticalDragEnd,
+    required this.onMaximize,
   });
+
+  bool _isIdentity(Matrix4 m) {
+    final scale = m.getMaxScaleOnAxis();
+    return (scale - 1.0).abs() < 0.08;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -273,29 +274,27 @@ class _PullEnlargeImage extends StatelessWidget {
           child: LayoutBuilder(
             builder: (context, constraints) {
               return GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onTap,
-                onVerticalDragUpdate: onVerticalDragUpdate,
-                onVerticalDragEnd: onVerticalDragEnd,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    // Dim scrim grows as user pulls up (pre-maximize cue).
-                    ColoredBox(
-                      color: Colors.black.withValues(alpha: 0.55 * pullProgress),
-                    ),
-                    Center(
-                      child: Transform.scale(
-                        scale: scale,
-                        alignment: Alignment.center,
-                        child: SizedBox(
-                          width: constraints.maxWidth,
-                          height: constraints.maxHeight,
-                          child: Center(child: child),
-                        ),
-                      ),
-                    ),
-                  ],
+                behavior: HitTestBehavior.deferToChild,
+                // Tap → same maximize as committed up-fling.
+                onTap: () {
+                  if (_isIdentity(transform.value)) onMaximize();
+                },
+                child: InteractiveViewer(
+                  transformationController: transform,
+                  minScale: 0.8,
+                  maxScale: 4,
+                  // eaa0006: pan + pinch fully enabled (上滑浏览).
+                  onInteractionEnd: (details) {
+                    if (!_isIdentity(transform.value)) return;
+                    final v = details.velocity.pixelsPerSecond.dy;
+                    // Strong upward fling at identity → same maximize as tap.
+                    if (v < -900) onMaximize();
+                  },
+                  child: SizedBox(
+                    width: constraints.maxWidth,
+                    height: constraints.maxHeight,
+                    child: Center(child: child),
+                  ),
                 ),
               );
             },
@@ -304,7 +303,7 @@ class _PullEnlargeImage extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
           child: Text(
-            '${ProcessImageService.attribution}\n上滑持续放大 · 松手最大化 · 点按同样最大化',
+            '${ProcessImageService.attribution}\n上滑浏览 · 点按最大化 · 双指缩放',
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: AppTheme.muted,
@@ -318,7 +317,6 @@ class _PullEnlargeImage extends StatelessWidget {
   }
 }
 
-/// Fullscreen maximize end-state (pinch/drag here; swipe down to close).
 class _FullscreenProcessImage extends StatefulWidget {
   final Widget image;
   const _FullscreenProcessImage({required this.image});
@@ -330,17 +328,6 @@ class _FullscreenProcessImage extends StatefulWidget {
 
 class _FullscreenProcessImageState extends State<_FullscreenProcessImage> {
   final _transform = TransformationController();
-  bool _zoomed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _transform.addListener(() {
-      final scale = _transform.value.getMaxScaleOnAxis();
-      final z = (scale - 1.0).abs() >= 0.08;
-      if (z != _zoomed && mounted) setState(() => _zoomed = z);
-    });
-  }
 
   @override
   void dispose() {
@@ -361,23 +348,14 @@ class _FullscreenProcessImageState extends State<_FullscreenProcessImage> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          GestureDetector(
-            onVerticalDragEnd: _zoomed
-                ? null
-                : (d) {
-                    final v = d.primaryVelocity ?? 0;
-                    if (v > 500) _close();
-                  },
-            child: InteractiveViewer(
-              transformationController: _transform,
-              minScale: 0.5,
-              maxScale: 5,
-              panEnabled: _zoomed,
-              child: SizedBox(
-                width: MediaQuery.sizeOf(context).width,
-                height: MediaQuery.sizeOf(context).height,
-                child: Center(child: widget.image),
-              ),
+          InteractiveViewer(
+            transformationController: _transform,
+            minScale: 0.5,
+            maxScale: 5,
+            child: SizedBox(
+              width: MediaQuery.sizeOf(context).width,
+              height: MediaQuery.sizeOf(context).height,
+              child: Center(child: widget.image),
             ),
           ),
           Positioned(
@@ -398,7 +376,7 @@ class _FullscreenProcessImageState extends State<_FullscreenProcessImage> {
             right: 16,
             bottom: math.max(pad.bottom, 12) + 8,
             child: Text(
-              '双指缩放 · 下滑关闭',
+              '双指缩放 · 点关闭',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.7),
