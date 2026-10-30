@@ -11,6 +11,7 @@ import '../theme/doodle_icons.dart';
 import '../utils/recipe_parser.dart';
 import '../widgets/inertia_timer_picker.dart';
 import '../widgets/linked_checklist.dart';
+import '../widgets/dish_cover_thumb.dart';
 import '../widgets/process_image_viewer.dart';
 import '../widgets/snap_timeline.dart';
 import '../widgets/squeeze_done_button.dart';
@@ -266,7 +267,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                   backgroundColor: AppTheme.blackCard,
                   foregroundColor: Colors.white,
                   iconTheme: const IconThemeData(color: Colors.white),
-                  expandedHeight: 200,
+                  expandedHeight: 210,
                   actions: [
                     IconButton(
                       tooltip: '视频做法',
@@ -295,7 +296,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                   flexibleSpace: FlexibleSpaceBar(
                     background: Container(
                       color: AppTheme.blackCard,
-                      padding: const EdgeInsets.fromLTRB(20, 88, 20, 24),
+                      padding: const EdgeInsets.fromLTRB(20, 88, 20, 20),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -330,28 +331,57 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                             ),
                           ),
                           const SizedBox(height: 12),
-                          Text(
-                            _parsed.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.6,
-                              height: 1.1,
-                            ),
-                          ),
-                          if (_parsed.difficulty != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              '难度 ${'★' * _parsed.difficulty!}${'☆' * (5 - _parsed.difficulty!)}',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.75),
-                                fontWeight: FontWeight.w600,
+                          // Dish logo/cover in navy header (beside title), not a process strip.
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              DishCoverThumb(
+                                recipe: recipe,
+                                size: 64,
+                                borderRadius: BorderRadius.circular(16),
+                                fallbackColor: color.withValues(alpha: 0.35),
+                                fallback: Container(
+                                  alignment: Alignment.center,
+                                  color: color.withValues(alpha: 0.35),
+                                  child: DoodleIcons.categoryIcon(
+                                    recipe.categoryId,
+                                    size: 32,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _parsed.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: -0.6,
+                                        height: 1.1,
+                                      ),
+                                    ),
+                                    if (_parsed.difficulty != null) ...[
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        '难度 ${'★' * _parsed.difficulty!}${'☆' * (5 - _parsed.difficulty!)}',
+                                        style: TextStyle(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.75),
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),

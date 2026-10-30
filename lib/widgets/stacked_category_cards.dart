@@ -48,7 +48,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   static const _visibleBehind = 3;
   static const _visibleAbove = 3;
   /// Finger pixels per one card of [offset] (higher = silkier / less twitchy).
-  static const _pxPerCard = 100.0;
+  static const _pxPerCard = 78.0;
 
   late bool _expanded;
   late final AnimationController _fanCtrl;
@@ -58,6 +58,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   double _offset = 0;
   int _lastSettled = 0;
   bool _dragging = false;
+  /// 0 idle, 1 friction coast, 2 spring snap.
+  int _coastPhase = 0;
 
   @override
   void initState() {
@@ -99,7 +101,32 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   void _onCoastStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed || !mounted) return;
     if (_n < 1) return;
-    // Snap + normalize into [0, n) so offset stays bounded after wrap coasts.
+
+    // Phase 1 (friction) finished → soft spring to nearest card.
+    if (_coastPhase == 1) {
+      var target = _offset.round().toDouble();
+      // After a real fling, prefer landing at least one card away when
+      // friction barely moved us (keeps “多滑 1～2 张” obvious).
+      if ((target - _lastSettled).abs() < 0.5 &&
+          (_offset - _lastSettled).abs() > 0.35) {
+        target = _offset > _lastSettled
+            ? _lastSettled + 1.0
+            : _lastSettled - 1.0;
+      }
+      _coastPhase = 2;
+      final spring = SpringDescription(
+        mass: 1.2,
+        stiffness: 22,
+        damping: 14,
+      );
+      _coastCtrl.animateWith(
+        SpringSimulation(spring, _offset, target, 0),
+      );
+      return;
+    }
+
+    // Phase 2 (or direct) done → normalize + haptics.
+    _coastPhase = 0;
     final settled = _modIndex(_offset.round());
     setState(() {
       _offset = settled.toDouble();
@@ -156,6 +183,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   void _onVerticalDragStart(DragStartDetails _) {
     if (_expanded) return;
     _dragging = true;
+    _coastPhase = 0;
     _coastCtrl.stop();
   }
 
@@ -190,33 +218,19 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
       setState(() => _offset = 0);
       return;
     }
-    // Lower friction → obvious delayed coast; allow ~1–2 extra cards.
-    // No end clamps (infinite loop).
-    final coastVel = velocity * 1.2;
-    final friction = FrictionSimulation(0.062, _offset, coastVel);
-    var predicted = friction.x(double.infinity);
-    if (predicted.isNaN || predicted.isInfinite) {
-      predicted = _offset + coastVel * 0.55;
+    // Two-phase: friction coast (delayed / silky) → soft spring snap.
+    // Previously we only *predicted* with friction then sprang immediately,
+    // so the delayed coast was never visible.
+    final coastVel = velocity * 1.85;
+    // Mild fling still advances ~1 card; strong fling coasts 1–2 extra.
+    var kick = coastVel;
+    if (kick.abs() < 0.8 && kick.abs() > 0.12) {
+      kick = kick.sign * 1.15;
+    } else if (kick.abs() >= 0.8 && kick.abs() < 2.2) {
+      kick = kick.sign * (kick.abs() + 1.0);
     }
-    // Prefer at least one extra card of coast when fling is decisive.
-    final travel = predicted - _offset;
-    if (coastVel.abs() > 1.2 && travel.abs() < 1.4) {
-      predicted = _offset + coastVel.sign * 1.6;
-    }
-    // Cap so a hard fling coasts about 1–2 cards past finger settle (~3.5).
-    final maxJump = 3.5;
-    final delta = (predicted - _offset).clamp(-maxJump, maxJump);
-    predicted = _offset + delta;
-    final target = predicted.round().toDouble();
-
-    // Soft, heavy spring = delayed settle after the coast.
-    final spring = SpringDescription(
-      mass: 1.45,
-      stiffness: 18,
-      damping: 11.5,
-    );
-    final sim = SpringSimulation(spring, _offset, target, coastVel);
-    _coastCtrl.animateWith(sim);
+    _coastPhase = 1;
+    _coastCtrl.animateWith(FrictionSimulation(0.035, _offset, kick));
   }
 
   @override

@@ -126,8 +126,14 @@ class UpdateService {
     return false;
   }
 
-  /// Prefer app-external-files (open_filex allows without MANAGE_EXTERNAL_STORAGE).
+  /// Prefer temp/cache (FileProvider cache-path), then external-files.
   static Future<Directory> _apkDir() async {
+    try {
+      final tmp = await getTemporaryDirectory();
+      final dir = Directory(p.join(tmp.path, 'updates'));
+      if (!await dir.exists()) await dir.create(recursive: true);
+      return dir;
+    } catch (_) {}
     try {
       final ext = await getExternalStorageDirectory();
       if (ext != null) {
@@ -136,13 +142,10 @@ class UpdateService {
         return dir;
       }
     } catch (_) {}
-    try {
-      final docs = await getApplicationDocumentsDirectory();
-      final dir = Directory(p.join(docs.path, 'updates'));
-      if (!await dir.exists()) await dir.create(recursive: true);
-      return dir;
-    } catch (_) {}
-    return getTemporaryDirectory();
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = Directory(p.join(docs.path, 'updates'));
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir;
   }
 
   static Future<bool> _looksLikeApk(File file) async {
@@ -169,9 +172,10 @@ class UpdateService {
       );
       switch (status) {
         case 'launched':
+        case 'session_committed':
           return '已调起安装程序，请按系统提示完成安装';
         case 'need_permission':
-          return '请先允许「安装未知应用」，返回后再次点击安装';
+          return '请先允许「安装未知应用」，返回 App 后再次点「下载并安装」';
         default:
           if (status != null && status.isNotEmpty) {
             return '安装状态：$status';
@@ -227,8 +231,9 @@ class UpdateService {
       final req = http.Request('GET', Uri.parse(apkUrl));
       req.headers['User-Agent'] = 'HowToCook-mobile';
       req.headers['Accept'] = '*/*';
+      // ~85MB APK: allow long transfer; incomplete files still start with PK..
       final streamed =
-          await client.send(req).timeout(const Duration(seconds: 60));
+          await client.send(req).timeout(const Duration(minutes: 10));
       if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
         throw Exception('下载失败（HTTP ${streamed.statusCode}）');
       }
@@ -242,13 +247,19 @@ class UpdateService {
       }
       await sink.flush();
       await sink.close();
-      if (received < 1024) {
-        throw Exception('下载的文件过小（$received 字节），可能不是有效 APK');
+      // Incomplete download is a known install-failure root cause: magic still PK.
+      if (total > 0 && received < total) {
+        try { await file.delete(); } catch (_) {}
+        throw Exception('下载不完整（$received / $total 字节），请重试');
+      }
+      if (received < 5 * 1024 * 1024) {
+        try { await file.delete(); } catch (_) {}
+        throw Exception('下载的文件过小（$received 字节），可能不是完整 APK');
       }
     } on SocketException catch (e) {
       throw Exception('下载失败：网络不可用（$e）');
     } on TimeoutException {
-      throw Exception('下载超时，请检查网络后重试');
+      throw Exception('下载超时（大包约 80MB），请检查网络后重试');
     } finally {
       client.close();
     }
