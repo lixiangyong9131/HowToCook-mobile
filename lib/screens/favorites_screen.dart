@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../main.dart';
 import '../models/recipe.dart';
-import '../routes/circular_reveal_route.dart';
+import '../routes/recipe_nav.dart';
 import '../services/recipe_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/recipe_card.dart';
-import 'recipe_detail_screen.dart';
 
 class FavoritesScreen extends StatelessWidget {
   const FavoritesScreen({super.key});
@@ -98,14 +97,7 @@ class FavoritesScreen extends StatelessWidget {
                           recipe: r,
                           accent: categoryColors[r.categoryId] ?? AppTheme.neon,
                           showCategory: true,
-                          onTap: (origin) {
-                            CircularRevealRoute.open(
-                              context,
-                              page: RecipeDetailScreen(recipe: r),
-                              from: origin,
-                              veilColor: AppTheme.purple,
-                            );
-                          },
+                          onTap: () => openRecipeDetail(context, recipe: r),
                         );
                       },
                     ),

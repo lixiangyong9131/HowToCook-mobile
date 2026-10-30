@@ -116,8 +116,18 @@ class _AboutScreenState extends State<AboutScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('检查失败：$e')),
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('检查更新失败'),
+          content: Text('$e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
       );
     } finally {
       if (mounted) {
@@ -283,7 +293,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'v0.5：视频做法、整图做法、更小的桌面图标留白。',
+                  'v0.5.1：详情模块重排、应用内播放视频、修复导航与检查更新。',
                 ),
               ],
             ),

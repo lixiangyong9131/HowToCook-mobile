@@ -1,10 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <application
         android:label="程序员做饭指南"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -37,6 +40,10 @@
             <data android:mimeType="application/vnd.android.package-archive"/>
         </intent>
         <intent>
+            <action android:name="android.intent.action.INSTALL_PACKAGE"/>
+            <data android:mimeType="application/vnd.android.package-archive"/>
+        </intent>
+        <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>
         </intent>
@@ -48,5 +55,7 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="bilibili"/>
         </intent>
+        <package android:name="tv.danmaku.bili"/>
+        <package android:name="com.bilibili.app.in"/>
     </queries>
 </manifest>

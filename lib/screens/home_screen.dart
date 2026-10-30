@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../main.dart';
-import '../routes/circular_reveal_route.dart';
+import '../routes/recipe_nav.dart';
 import '../services/history_store.dart';
 import '../services/recipe_repository.dart';
 import '../theme/app_theme.dart';
 import 'categories_screen.dart';
 import 'category_recipes_screen.dart';
-import 'recipe_detail_screen.dart';
 import 'search_screen.dart';
 
 /// Home = search pill → 搜索历史 → 最近浏览 (newest first).
@@ -173,18 +172,12 @@ class HomeScreen extends StatelessWidget {
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
                       itemBuilder: (context, i) {
                         final e = history.browses[i];
-                        final recipe = RecipeRepository.instance.byId(e.id);
                         return _BrowseRow(
                           entry: e,
-                          onTap: (origin) {
-                            if (recipe == null) return;
-                            CircularRevealRoute.open(
-                              context,
-                              page: RecipeDetailScreen(recipe: recipe),
-                              from: origin,
-                              veilColor: AppTheme.purple,
-                            );
-                          },
+                          onTap: () => openRecipeDetail(
+                            context,
+                            recipeId: e.id,
+                          ),
                         );
                       },
                     ),
@@ -446,7 +439,7 @@ class _EmptyHint extends StatelessWidget {
 
 class _BrowseRow extends StatelessWidget {
   final BrowseEntry entry;
-  final void Function(Offset origin) onTap;
+  final VoidCallback onTap;
   const _BrowseRow({required this.entry, required this.onTap});
 
   @override
@@ -455,9 +448,10 @@ class _BrowseRow extends StatelessWidget {
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(AppTheme.radius),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         borderRadius: BorderRadius.circular(AppTheme.radius),
-        onTapDown: (d) => onTap(d.globalPosition),
+        onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           decoration: BoxDecoration(

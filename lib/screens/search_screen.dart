@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../main.dart';
 import '../models/recipe.dart';
-import '../routes/circular_reveal_route.dart';
+import '../routes/recipe_nav.dart';
 import '../services/recipe_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/recipe_card.dart';
-import 'recipe_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   final String? initialQuery;
@@ -115,14 +114,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           recipe: r,
                           accent: color,
                           showCategory: true,
-                          onTap: (origin) {
-                            CircularRevealRoute.open(
-                              context,
-                              page: RecipeDetailScreen(recipe: r),
-                              from: origin,
-                              veilColor: AppTheme.purple,
-                            );
-                          },
+                          onTap: () => openRecipeDetail(context, recipe: r),
                         ),
                       );
                     }),

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- GitHub Releases / API are HTTPS-only; keep cleartext off by default. -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">github.com</domain>
+        <domain includeSubdomains="true">githubusercontent.com</domain>
+        <domain includeSubdomains="true">bilibili.com</domain>
+        <domain includeSubdomains="true">bilivideo.com</domain>
+        <domain includeSubdomains="true">hdslb.com</domain>
+        <domain includeSubdomains="true">ryanuo.cc</domain>
+    </domain-config>
+</network-security-config>

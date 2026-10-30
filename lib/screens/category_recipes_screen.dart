@@ -1,24 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../models/recipe.dart';
-import '../routes/circular_reveal_route.dart';
+import '../routes/recipe_nav.dart';
 import '../services/recipe_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/recipe_card.dart';
-import 'recipe_detail_screen.dart';
 
 class CategoryRecipesScreen extends StatelessWidget {
   final CategoryInfo category;
   const CategoryRecipesScreen({super.key, required this.category});
-
-  void _openRecipe(BuildContext context, Recipe r, Offset origin, Color accent) {
-    CircularRevealRoute.open(
-      context,
-      page: RecipeDetailScreen(recipe: r),
-      from: origin,
-      veilColor: isDarkCard(accent) ? accent : AppTheme.purple,
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -98,7 +88,7 @@ class CategoryRecipesScreen extends StatelessWidget {
                     index: i + 1,
                     recipe: r,
                     accent: accent,
-                    onTap: (origin) => _openRecipe(context, r, origin, accent),
+                    onTap: () => openRecipeDetail(context, recipe: r),
                   );
                 },
               ),

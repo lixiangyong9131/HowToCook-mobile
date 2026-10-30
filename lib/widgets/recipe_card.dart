@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../main.dart';
 import '../models/recipe.dart';
@@ -8,7 +9,7 @@ class RecipeCard extends StatelessWidget {
   final int index;
   final Recipe recipe;
   final Color accent;
-  final void Function(Offset globalOrigin) onTap;
+  final VoidCallback onTap;
   final bool showCategory;
 
   const RecipeCard({
@@ -29,14 +30,12 @@ class RecipeCard extends StatelessWidget {
       elevation: 2,
       shadowColor: AppTheme.purple.withValues(alpha: 0.35),
       borderRadius: BorderRadius.circular(AppTheme.radius),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         borderRadius: BorderRadius.circular(AppTheme.radius),
         onTap: () {
-          final box = context.findRenderObject() as RenderBox?;
-          final origin = (box != null && box.hasSize)
-              ? box.localToGlobal(box.size.center(Offset.zero))
-              : MediaQuery.sizeOf(context).center(Offset.zero);
-          onTap(origin);
+          HapticFeedback.selectionClick();
+          onTap();
         },
         child: Ink(
           decoration: BoxDecoration(

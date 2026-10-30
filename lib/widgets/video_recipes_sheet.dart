@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/video_search_service.dart';
+import 'bili_video_player_dialog.dart';
 import '../theme/app_theme.dart';
 
 Future<void> showVideoRecipesSheet(
@@ -178,7 +179,7 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
           borderRadius: BorderRadius.circular(18),
           child: InkWell(
             borderRadius: BorderRadius.circular(18),
-            onTap: () => _openUrl(v.watchUrl),
+            onTap: () => showBiliVideoPlayer(context, video: v),
             child: Padding(
               padding: const EdgeInsets.all(10),
               child: Row(

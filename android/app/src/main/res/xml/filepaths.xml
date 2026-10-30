@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <external-path path="Android/data/com.howtocook.how_to_cook/" name="files_root" />
-    <external-path path="." name="external_storage_root" />
+    <external-path name="external-path" path="." />
+    <external-cache-path name="external-cache-path" path="." />
+    <external-files-path name="external-files-path" path="." />
     <files-path name="files_path" path="." />
-    <cache-path name="cache_path" path="." />
-    <external-cache-path name="external_cache_path" path="." />
+    <cache-path name="cache-path" path="." />
+    <root-path name="root" path="." />
 </paths>

@@ -6,7 +6,7 @@
 
 ## 功能
 
-交互参考微信小程序 [LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)。**v0.5.0** 新增视频做法与整图做法：
+交互参考微信小程序 [LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)。**v0.5.1** 新增视频做法与整图做法：
 
 - **视频做法**：详情页入口，底部弹层展示 B 站搜索结果（封面/标题/UP/时长/播放量），一键「在 B 站打开」（优先 [eat.ryanuo.cc](https://eat.ryanuo.cc/) `/api/video-search`，失败回落官方搜索 API，再不行打开搜索页）
 - **整图做法**：有图时默认以 [king-jingxiang/HowToCook](https://github.com/king-jingxiang/HowToCook) 的 9:16 信息图替换步骤时间轴（`InteractiveViewer` 缩放）；按需从 GitHub Pages 下载并磁盘缓存，不打进 APK；原料仍保留，文字步骤可折叠备用

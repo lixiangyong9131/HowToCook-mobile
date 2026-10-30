@@ -29,50 +29,47 @@ class HowToCookApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Do NOT ListenableBuilder-wrap MaterialApp — rebuilding it can drop
+    // the Navigator stack and make list taps look "dead" after browse/fav updates.
     return FavoritesScope(
       store: favorites,
       child: HistoryScope(
         store: history,
-        child: ListenableBuilder(
-          listenable: Listenable.merge([favorites, history]),
-          builder: (context, _) {
-            return MaterialApp(
-              title: '程序员做饭指南',
-              debugShowCheckedModeBanner: false,
-              theme: AppTheme.light(),
-              home: const ShellScreen(),
-            );
-          },
+        child: MaterialApp(
+          title: '程序员做饭指南',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light(),
+          home: const ShellScreen(),
         ),
       ),
     );
   }
 }
 
-class FavoritesScope extends InheritedWidget {
-  final FavoritesStore store;
-  const FavoritesScope({super.key, required this.store, required super.child});
+class FavoritesScope extends InheritedNotifier<FavoritesStore> {
+  const FavoritesScope({
+    super.key,
+    required FavoritesStore store,
+    required super.child,
+  }) : super(notifier: store);
 
   static FavoritesStore of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<FavoritesScope>();
     assert(scope != null, 'FavoritesScope not found');
-    return scope!.store;
+    return scope!.notifier!;
   }
-
-  @override
-  bool updateShouldNotify(FavoritesScope oldWidget) => store != oldWidget.store;
 }
 
-class HistoryScope extends InheritedWidget {
-  final HistoryStore store;
-  const HistoryScope({super.key, required this.store, required super.child});
+class HistoryScope extends InheritedNotifier<HistoryStore> {
+  const HistoryScope({
+    super.key,
+    required HistoryStore store,
+    required super.child,
+  }) : super(notifier: store);
 
   static HistoryStore of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<HistoryScope>();
     assert(scope != null, 'HistoryScope not found');
-    return scope!.store;
+    return scope!.notifier!;
   }
-
-  @override
-  bool updateShouldNotify(HistoryScope oldWidget) => store != oldWidget.store;
 }

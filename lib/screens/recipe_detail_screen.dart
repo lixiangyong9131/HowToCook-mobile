@@ -28,27 +28,25 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   late final ParsedRecipe _parsed;
   late final TabController _tabs;
   late final List<_DetailTab> _detailTabs;
+  late final RecipeSection? _mergedIngredients;
   Timer? _timer;
   Duration? _remaining;
   Duration? _total;
   double _favScale = 1;
   bool _hasProcessImage = false;
-  bool _preferImage = true;
   bool _stepsTextExpanded = false;
 
   @override
   void initState() {
     super.initState();
     _parsed = parseRecipeMarkdown(widget.recipe.markdown);
+    _mergedIngredients = _buildMergedIngredients();
     _detailTabs = _computeTabs();
     _tabs = TabController(length: _detailTabs.length, vsync: this);
     ProcessImageService.instance.ensureLoaded().then((_) {
       if (!mounted) return;
       final has = ProcessImageService.instance.hasImage(widget.recipe);
-      setState(() {
-        _hasProcessImage = has;
-        _preferImage = has;
-      });
+      setState(() => _hasProcessImage = has);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -76,28 +74,77 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     return null;
   }
 
+  RecipeSection? get _calcSection {
+    for (final s in _parsed.sections) {
+      if (s.title.contains('计算')) return s;
+    }
+    return null;
+  }
+
+  /// Merge 「计算」 useful lines into 「必备原料和工具」.
+  RecipeSection? _buildMergedIngredients() {
+    final ing = _ingredientSection;
+    final calc = _calcSection;
+    if (ing == null && calc == null) return null;
+    if (ing == null) {
+      return RecipeSection(
+        title: '必备原料和工具',
+        body: calc!.body,
+        items: calc.items,
+        isSteps: false,
+      );
+    }
+    if (calc == null) return ing;
+
+    final items = <String>[...ing.items];
+    final calcBits = <String>[];
+    final body = calc.body.trim();
+    if (body.isNotEmpty) {
+      for (final line in body.split('\n')) {
+        final t = line.trim();
+        if (t.isEmpty) continue;
+        // Skip the generic "确定份数" boilerplate; keep concrete amounts.
+        if (t.contains('每次制作前需要确定计划做几份')) continue;
+        if (t == '总量：' || t == '总量:') continue;
+        calcBits.add(t.replaceFirst(RegExp(r'^[-*+]\s+'), ''));
+      }
+    }
+    for (final it in calc.items) {
+      final t = it.trim();
+      if (t.isEmpty) continue;
+      if (!items.contains(t) && !calcBits.contains(t)) calcBits.add(t);
+    }
+    // Prefer showing calc amounts as annotated lines under ingredients.
+    if (calcBits.isNotEmpty) {
+      items.add('—— 用量参考 ——');
+      items.addAll(calcBits);
+    }
+    return RecipeSection(
+      title: ing.title.isNotEmpty ? ing.title : '必备原料和工具',
+      body: ing.body,
+      items: items,
+      isSteps: false,
+    );
+  }
+
   List<_DetailTab> _computeTabs() {
     final tabs = <_DetailTab>[];
-    final ing = _ingredientSection;
+    // Module 1 = 做法大图 (process image / steps fallback)
+    tabs.add(_DetailTab(
+      label: '做法大图',
+      kind: _TabKind.cook,
+      section: _stepsSection,
+    ));
+    // Module 2 = 必备原料和工具 (with calc merged)
+    final ing = _mergedIngredients;
     if (ing != null) {
       tabs.add(_DetailTab(
-        label: ing.title,
+        label: '必备原料和工具',
         kind: _TabKind.ingredients,
         section: ing,
       ));
     }
-    // Always reserve a "做法" tab: shows process image when available, else steps.
-    tabs.add(_DetailTab(
-      label: '做法',
-      kind: _TabKind.cook,
-      section: _stepsSection,
-    ));
-    for (final s in _parsed.sections) {
-      if (identical(s, ing)) continue;
-      if (s.isSteps) continue;
-      if (s.title.contains('原料') || s.title.contains('用料')) continue;
-      tabs.add(_DetailTab(label: s.title, kind: _TabKind.other, section: s));
-    }
+    // Intentionally omit 「计算」「附加内容」 and other misc sections.
     return tabs;
   }
 
@@ -265,43 +312,22 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        ActionChip(
-                          avatar: const Icon(
-                            Icons.smart_display_rounded,
-                            size: 18,
-                            color: Color(0xFFFF5A8A),
-                          ),
-                          label: const Text('视频做法'),
-                          onPressed: _openVideo,
-                          backgroundColor: Colors.white,
-                          side: BorderSide(
-                            color: const Color(0xFFFF5A8A)
-                                .withValues(alpha: 0.35),
-                          ),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: ActionChip(
+                        avatar: const Icon(
+                          Icons.smart_display_rounded,
+                          size: 18,
+                          color: Color(0xFFFF5A8A),
                         ),
-                        if (_hasProcessImage)
-                          ActionChip(
-                            avatar: Icon(
-                              _preferImage
-                                  ? Icons.image_rounded
-                                  : Icons.format_list_numbered_rounded,
-                              size: 18,
-                              color: AppTheme.purple,
-                            ),
-                            label:
-                                Text(_preferImage ? '切换文字步骤' : '切换整图做法'),
-                            onPressed: () =>
-                                setState(() => _preferImage = !_preferImage),
-                            backgroundColor: Colors.white,
-                            side: BorderSide(
-                              color: AppTheme.purple.withValues(alpha: 0.35),
-                            ),
-                          ),
-                      ],
+                        label: const Text('视频做法'),
+                        onPressed: _openVideo,
+                        backgroundColor: Colors.white,
+                        side: BorderSide(
+                          color: const Color(0xFFFF5A8A)
+                              .withValues(alpha: 0.35),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -370,16 +396,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   Widget _buildTabBody(_DetailTab t) {
     switch (t.kind) {
       case _TabKind.cook:
-        final showImage = _hasProcessImage && _preferImage;
-        if (showImage) {
+        // Module 1: process image first; text steps only as expandable backup.
+        if (_hasProcessImage) {
           return Column(
             children: [
               Expanded(
                 child: ProcessImageViewer(
                   loader: () => ProcessImageService.instance
                       .cachedFileFor(widget.recipe),
-                  onFallbackSteps: () =>
-                      setState(() => _preferImage = false),
                 ),
               ),
               if (t.section != null && t.section!.items.isNotEmpty)
@@ -429,18 +453,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             if (idx >= 0) _tabs.animateTo(idx);
           },
         );
-      case _TabKind.other:
-        return _SectionBody(
-          section: t.section!,
-          isIngredient: false,
-          isSteps: false,
-          onPickTimer: _openTimerPicker,
-        );
     }
   }
 }
 
-enum _TabKind { ingredients, cook, other }
+enum _TabKind { ingredients, cook }
 
 class _DetailTab {
   final String label;
