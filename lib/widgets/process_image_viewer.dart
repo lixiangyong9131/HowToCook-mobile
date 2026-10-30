@@ -176,7 +176,7 @@ class _Unavailable extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('整图暂不可用', style: TextStyle(fontSize: 16)),
+            const Text('暂无图片', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
             const SizedBox(height: 8),
             Text(
               ProcessImageService.attribution,

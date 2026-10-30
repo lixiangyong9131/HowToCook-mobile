@@ -417,7 +417,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   Widget _buildTabBody(_DetailTab t) {
     switch (t.kind) {
       case _TabKind.cook:
-        // Module 1: process image only (文字步骤备用已移除).
+        // Module 1: process image only — no image → 「暂无图片」 placeholder
+        // (not blank, not broken, not text-steps fallback).
         if (_hasProcessImage) {
           return SizedBox.expand(
             child: ProcessImageViewer(
@@ -429,15 +430,29 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             ),
           );
         }
-        if (t.section != null && t.section!.items.isNotEmpty) {
-          return _SectionBody(
-            section: t.section!,
-            isIngredient: false,
-            isSteps: true,
-            onPickTimer: _openTimerPicker,
-          );
-        }
-        return const Center(child: Text('暂无步骤'));
+        return const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.image_not_supported_outlined,
+                  size: 48, color: AppTheme.muted),
+              SizedBox(height: 12),
+              Text(
+                '暂无图片',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.ink,
+                ),
+              ),
+              SizedBox(height: 6),
+              Text(
+                '该菜谱暂无整图做法',
+                style: TextStyle(fontSize: 13, color: AppTheme.muted),
+              ),
+            ],
+          ),
+        );
       case _TabKind.ingredients:
         return _SectionBody(
           section: t.section!,
