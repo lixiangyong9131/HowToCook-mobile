@@ -6,17 +6,15 @@
 
 ## 功能
 
-交互参考微信小程序 [LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)。**v0.4.1** 围绕 Logo 配色重做，并强化六种动效：
+交互参考微信小程序 [LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)。**v0.5.0** 新增视频做法与整图做法：
 
-- **Logo / 主题**：紫→珊瑚渐变 `#8B7CFF→#FF7A85`、霓虹绿 `#39FF5A`、深蓝 `#1A1F3A`、丁香底 `#F3F0FF`；卡片左侧渐变条 + 紫色柔影
-- **首页**：搜索框 → 搜索历史 → 最近浏览（倒序）；分类改为独立「分类浏览」页（叠卡展开）
-- **完成反馈**：步骤「完成这一步」挤压成圆 → 打勾 → 粒子爆发
-- **勾选联动**：原料大进度环 + 滚动 `n/N`，卡片随勾选变绿
-- **叠卡展开**：分类页打开后自动弹簧展开彩色分类卡
-- **吸附卡**：操作步骤竖直 PageView 磁吸，当前步霓虹绿高亮 + 虚线时间轴
-- **惯性滚轮**：计时双滚轮（分/秒）+ 薰衣草紫选中条
-- **圆形扩散转场**：点开菜谱从点击处圆形揭示
-- **应用内更新**（Android）：「我的 → 检查更新」对照 GitHub Releases，下载 APK 并调起安装
+- **视频做法**：详情页入口，底部弹层展示 B 站搜索结果（封面/标题/UP/时长/播放量），一键「在 B 站打开」（优先 [eat.ryanuo.cc](https://eat.ryanuo.cc/) `/api/video-search`，失败回落官方搜索 API，再不行打开搜索页）
+- **整图做法**：有图时默认以 [king-jingxiang/HowToCook](https://github.com/king-jingxiang/HowToCook) 的 9:16 信息图替换步骤时间轴（`InteractiveViewer` 缩放）；按需从 GitHub Pages 下载并磁盘缓存，不打进 APK；原料仍保留，文字步骤可折叠备用
+- **桌面图标**：自适应前景吉祥物缩小至约 57% 画布，渐变底全铺，OEM 遮罩内留白更多
+- **Logo / 主题**：紫→珊瑚渐变 `#8B7CFF→#FF7A85`、霓虹绿 `#39FF5A`、深蓝 `#1A1F3A`、丁香底 `#F3F0FF`
+- **首页**：搜索框 → 搜索历史 → 最近浏览；分类独立「分类浏览」叠卡页
+- **动效**：完成挤压打勾、原料进度环、叠卡展开、步骤磁吸、惯性计时、柔和圆形揭示
+- **应用内更新**（Android）：「我的 → 检查更新」拉取 GitHub Releases APK
 - 收藏、离线 JSON 菜谱、搜索结果页均保留
 
 ## 本地运行（Flutter）

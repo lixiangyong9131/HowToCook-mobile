@@ -251,6 +251,30 @@ class _AboutScreenState extends State<AboutScreen> {
             ),
             const SizedBox(height: 12),
             const _InfoCard(
+              title: '整图做法来源',
+              accent: AppTheme.purple,
+              children: [
+                Text(
+                  '部分菜品「整图做法」来自 king-jingxiang/HowToCook（AI 信息图），按需下载缓存，不打包进 APK。',
+                ),
+                SizedBox(height: 8),
+                SelectableText(
+                  'https://github.com/king-jingxiang/HowToCook',
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const _InfoCard(
+              title: '视频做法',
+              accent: Color(0xFFFF5A8A),
+              children: [
+                Text(
+                  '「视频做法」搜索 B 站相关教程（优先 eat.ryanuo.cc 接口，失败则官方搜索 API，再不行打开 B 站搜索页）。',
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const _InfoCard(
               title: '本仓库',
               accent: AppTheme.coral,
               children: [
@@ -259,7 +283,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'v0.4 视觉：Logo 紫→珊瑚渐变、霓虹绿强调、深蓝海军风；首页=搜索+历史+最近浏览。',
+                  'v0.5：视频做法、整图做法、更小的桌面图标留白。',
                 ),
               ],
             ),

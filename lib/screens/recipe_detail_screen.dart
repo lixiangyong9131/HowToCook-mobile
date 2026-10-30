@@ -5,12 +5,15 @@ import 'package:flutter/services.dart';
 
 import '../main.dart';
 import '../models/recipe.dart';
+import '../services/process_image_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/recipe_parser.dart';
 import '../widgets/inertia_timer_picker.dart';
 import '../widgets/linked_checklist.dart';
+import '../widgets/process_image_viewer.dart';
 import '../widgets/snap_timeline.dart';
 import '../widgets/squeeze_done_button.dart';
+import '../widgets/video_recipes_sheet.dart';
 
 class RecipeDetailScreen extends StatefulWidget {
   final Recipe recipe;
@@ -24,17 +27,29 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     with SingleTickerProviderStateMixin {
   late final ParsedRecipe _parsed;
   late final TabController _tabs;
+  late final List<_DetailTab> _detailTabs;
   Timer? _timer;
   Duration? _remaining;
   Duration? _total;
   double _favScale = 1;
+  bool _hasProcessImage = false;
+  bool _preferImage = true;
+  bool _stepsTextExpanded = false;
 
   @override
   void initState() {
     super.initState();
     _parsed = parseRecipeMarkdown(widget.recipe.markdown);
-    final len = _parsed.sections.isEmpty ? 1 : _parsed.sections.length;
-    _tabs = TabController(length: len, vsync: this);
+    _detailTabs = _computeTabs();
+    _tabs = TabController(length: _detailTabs.length, vsync: this);
+    ProcessImageService.instance.ensureLoaded().then((_) {
+      if (!mounted) return;
+      final has = ProcessImageService.instance.hasImage(widget.recipe);
+      setState(() {
+        _hasProcessImage = has;
+        _preferImage = has;
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final r = widget.recipe;
@@ -45,6 +60,45 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
         categoryName: r.categoryName,
       );
     });
+  }
+
+  RecipeSection? get _ingredientSection {
+    for (final s in _parsed.sections) {
+      if (s.title.contains('原料') || s.title.contains('用料')) return s;
+    }
+    return null;
+  }
+
+  RecipeSection? get _stepsSection {
+    for (final s in _parsed.sections) {
+      if (s.isSteps) return s;
+    }
+    return null;
+  }
+
+  List<_DetailTab> _computeTabs() {
+    final tabs = <_DetailTab>[];
+    final ing = _ingredientSection;
+    if (ing != null) {
+      tabs.add(_DetailTab(
+        label: ing.title,
+        kind: _TabKind.ingredients,
+        section: ing,
+      ));
+    }
+    // Always reserve a "做法" tab: shows process image when available, else steps.
+    tabs.add(_DetailTab(
+      label: '做法',
+      kind: _TabKind.cook,
+      section: _stepsSection,
+    ));
+    for (final s in _parsed.sections) {
+      if (identical(s, ing)) continue;
+      if (s.isSteps) continue;
+      if (s.title.contains('原料') || s.title.contains('用料')) continue;
+      tabs.add(_DetailTab(label: s.title, kind: _TabKind.other, section: s));
+    }
+    return tabs;
   }
 
   @override
@@ -101,18 +155,12 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     if (d != null) _startTimer(d);
   }
 
-  RecipeSection? get _ingredientSection {
-    for (final s in _parsed.sections) {
-      if (s.title.contains('原料') || s.title.contains('用料')) return s;
-    }
-    return null;
-  }
-
-  RecipeSection? get _stepsSection {
-    for (final s in _parsed.sections) {
-      if (s.isSteps) return s;
-    }
-    return null;
+  void _openVideo() {
+    HapticFeedback.selectionClick();
+    showVideoRecipesSheet(
+      context,
+      dishName: _parsed.title.isNotEmpty ? _parsed.title : widget.recipe.title,
+    );
   }
 
   @override
@@ -120,7 +168,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     final recipe = widget.recipe;
     final color = categoryColors[recipe.categoryId] ?? AppTheme.neon;
     final fav = FavoritesScope.of(context).isFavorite(recipe.id);
-    final sections = _parsed.sections;
 
     return Scaffold(
       backgroundColor: AppTheme.bg,
@@ -136,6 +183,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                   iconTheme: const IconThemeData(color: Colors.white),
                   expandedHeight: 200,
                   actions: [
+                    IconButton(
+                      tooltip: '视频做法',
+                      onPressed: _openVideo,
+                      icon: const Icon(Icons.smart_display_outlined),
+                    ),
                     IconButton(
                       tooltip: fav ? '取消收藏' : '收藏',
                       onPressed: _toggleFavorite,
@@ -210,10 +262,53 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                     ),
                   ),
                 ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ActionChip(
+                          avatar: const Icon(
+                            Icons.smart_display_rounded,
+                            size: 18,
+                            color: Color(0xFFFF5A8A),
+                          ),
+                          label: const Text('视频做法'),
+                          onPressed: _openVideo,
+                          backgroundColor: Colors.white,
+                          side: BorderSide(
+                            color: const Color(0xFFFF5A8A)
+                                .withValues(alpha: 0.35),
+                          ),
+                        ),
+                        if (_hasProcessImage)
+                          ActionChip(
+                            avatar: Icon(
+                              _preferImage
+                                  ? Icons.image_rounded
+                                  : Icons.format_list_numbered_rounded,
+                              size: 18,
+                              color: AppTheme.purple,
+                            ),
+                            label:
+                                Text(_preferImage ? '切换文字步骤' : '切换整图做法'),
+                            onPressed: () =>
+                                setState(() => _preferImage = !_preferImage),
+                            backgroundColor: Colors.white,
+                            side: BorderSide(
+                              color: AppTheme.purple.withValues(alpha: 0.35),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
                 if (_parsed.intro.isNotEmpty)
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
                       child: Text(
                         _parsed.intro
                             .replaceAll(RegExp(r'!\[.*?\]\([^)]+\)'), '')
@@ -226,55 +321,35 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                       ),
                     ),
                   ),
-                if (sections.isNotEmpty)
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _TabBarDelegate(
-                      TabBar(
-                        controller: _tabs,
-                        isScrollable: true,
-                        tabAlignment: TabAlignment.start,
-                        labelColor: AppTheme.ink,
-                        unselectedLabelColor: AppTheme.muted,
-                        indicatorColor: AppTheme.neon,
-                        indicatorWeight: 3,
-                        labelStyle: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                        ),
-                        tabs: [
-                          for (final s in sections) Tab(text: s.title),
-                        ],
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _TabBarDelegate(
+                    TabBar(
+                      controller: _tabs,
+                      isScrollable: true,
+                      tabAlignment: TabAlignment.start,
+                      labelColor: AppTheme.ink,
+                      unselectedLabelColor: AppTheme.muted,
+                      indicatorColor: AppTheme.neon,
+                      indicatorWeight: 3,
+                      labelStyle: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
                       ),
+                      tabs: [
+                        for (final t in _detailTabs) Tab(text: t.label),
+                      ],
                     ),
                   ),
+                ),
               ];
             },
-            body: sections.isEmpty
-                ? const Center(child: Text('暂无分节内容'))
-                : TabBarView(
-                    controller: _tabs,
-                    children: [
-                      for (final s in sections)
-                        _SectionBody(
-                          section: s,
-                          isIngredient: identical(s, _ingredientSection) ||
-                              s.title.contains('原料') ||
-                              s.title.contains('用料'),
-                          isSteps: s.isSteps,
-                          onPickTimer: _openTimerPicker,
-                          onAllIngredients: () {
-                            // Celebrate with squeeze button overlay snack via messenger is enough;
-                            // also jump toward steps if present.
-                            final steps = _stepsSection;
-                            if (steps != null) {
-                              final idx = sections.indexOf(steps);
-                              if (idx >= 0) _tabs.animateTo(idx);
-                            }
-                          },
-                        ),
-                    ],
-                  ),
+            body: TabBarView(
+              controller: _tabs,
+              children: [
+                for (final t in _detailTabs) _buildTabBody(t),
+              ],
+            ),
           ),
           if (_remaining != null)
             Positioned(
@@ -291,6 +366,91 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
       ),
     );
   }
+
+  Widget _buildTabBody(_DetailTab t) {
+    switch (t.kind) {
+      case _TabKind.cook:
+        final showImage = _hasProcessImage && _preferImage;
+        if (showImage) {
+          return Column(
+            children: [
+              Expanded(
+                child: ProcessImageViewer(
+                  loader: () => ProcessImageService.instance
+                      .cachedFileFor(widget.recipe),
+                  onFallbackSteps: () =>
+                      setState(() => _preferImage = false),
+                ),
+              ),
+              if (t.section != null && t.section!.items.isNotEmpty)
+                Material(
+                  color: Colors.white,
+                  child: ExpansionTile(
+                    initiallyExpanded: _stepsTextExpanded,
+                    onExpansionChanged: (v) =>
+                        setState(() => _stepsTextExpanded = v),
+                    title: const Text(
+                      '文字步骤（备用）',
+                      style: TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                    children: [
+                      SizedBox(
+                        height: 280,
+                        child: SnapTimeline(
+                          steps: t.section!.items,
+                          durationOf: extractStepDuration,
+                          onPickTimer: (d) => _openTimerPicker(d),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          );
+        }
+        if (t.section != null && t.section!.items.isNotEmpty) {
+          return _SectionBody(
+            section: t.section!,
+            isIngredient: false,
+            isSteps: true,
+            onPickTimer: _openTimerPicker,
+          );
+        }
+        return const Center(child: Text('暂无步骤'));
+      case _TabKind.ingredients:
+        return _SectionBody(
+          section: t.section!,
+          isIngredient: true,
+          isSteps: false,
+          onPickTimer: _openTimerPicker,
+          onAllIngredients: () {
+            final idx =
+                _detailTabs.indexWhere((e) => e.kind == _TabKind.cook);
+            if (idx >= 0) _tabs.animateTo(idx);
+          },
+        );
+      case _TabKind.other:
+        return _SectionBody(
+          section: t.section!,
+          isIngredient: false,
+          isSteps: false,
+          onPickTimer: _openTimerPicker,
+        );
+    }
+  }
+}
+
+enum _TabKind { ingredients, cook, other }
+
+class _DetailTab {
+  final String label;
+  final _TabKind kind;
+  final RecipeSection? section;
+  const _DetailTab({
+    required this.label,
+    required this.kind,
+    this.section,
+  });
 }
 
 class _SectionBody extends StatelessWidget {
