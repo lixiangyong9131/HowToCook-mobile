@@ -23,37 +23,39 @@ class RecipeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fav = FavoritesScope.of(context).isFavorite(recipe.id);
+    final dark = isDarkCard(accent);
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(22),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(22),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFFFE0B2)),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFE8E8ED)),
           ),
           child: Row(
             children: [
               Container(
-                width: 36,
-                height: 36,
+                width: 44,
+                height: 44,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  color: accent,
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: Text(
                   '$index',
                   style: TextStyle(
-                    color: accent,
-                    fontWeight: FontWeight.w800,
+                    color: dark ? Colors.white : AppTheme.ink,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -63,8 +65,8 @@ class RecipeCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                     if (showCategory || recipe.difficulty != null)
@@ -80,21 +82,22 @@ class RecipeCard extends StatelessWidget {
                               const SizedBox(width: 4),
                               Text(
                                 recipe.categoryName,
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontSize: 12,
-                                  color: Colors.grey.shade600,
+                                  color: AppTheme.muted,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                               if (recipe.difficulty != null)
                                 const Text(' · ',
-                                    style: TextStyle(color: Colors.grey)),
+                                    style: TextStyle(color: AppTheme.muted)),
                             ],
                             if (recipe.difficulty != null)
                               Text(
                                 recipe.difficultyStars,
                                 style: const TextStyle(
                                   fontSize: 12,
-                                  color: Color(0xFFFF8F00),
+                                  color: AppTheme.orange,
                                 ),
                               ),
                           ],
@@ -105,10 +108,10 @@ class RecipeCard extends StatelessWidget {
               ),
               if (fav)
                 const Padding(
-                  padding: EdgeInsets.only(right: 4),
-                  child: Icon(Icons.favorite, size: 16, color: Colors.redAccent),
+                  padding: EdgeInsets.only(right: 6),
+                  child: Icon(Icons.favorite, size: 16, color: AppTheme.orange),
                 ),
-              Icon(Icons.chevron_right, color: Colors.grey.shade400),
+              const Icon(Icons.north_east, size: 18, color: AppTheme.muted),
             ],
           ),
         ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+import '../widgets/pill_dock.dart';
 import 'about_screen.dart';
 import 'favorites_screen.dart';
 import 'home_screen.dart';
@@ -23,25 +25,24 @@ class _ShellScreenState extends State<ShellScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.restaurant_menu_outlined),
-            selectedIcon: Icon(Icons.restaurant_menu),
-            label: '首页',
+      backgroundColor: AppTheme.bg,
+      body: Stack(
+        children: [
+          // Content clears the floating dock.
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 72),
+              child: IndexedStack(index: _index, children: _pages),
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.favorite_border),
-            selectedIcon: Icon(Icons.favorite),
-            label: '收藏',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: '我的',
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: PillDock(
+              index: _index,
+              onChanged: (i) => setState(() => _index = i),
+            ),
           ),
         ],
       ),

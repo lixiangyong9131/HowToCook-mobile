@@ -10,88 +10,105 @@ class AboutScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final db = RecipeRepository.instance.db;
     return Scaffold(
-      appBar: AppBar(title: const Text('我的')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFF8A65), Color(0xFFE65100)],
+      backgroundColor: AppTheme.bg,
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(22, 16, 22, 40),
+          children: [
+            const Text(
+              '我的',
+              style: TextStyle(
+                fontSize: 36,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -1,
               ),
-              borderRadius: BorderRadius.circular(20),
             ),
-            child: const Row(
-              children: [
-                Text('👨‍💻🍳', style: TextStyle(fontSize: 36)),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '程序员做饭指南',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: AppTheme.blackCard,
+                borderRadius: BorderRadius.circular(AppTheme.radius),
+              ),
+              child: const Row(
+                children: [
+                  Text('👨‍💻🍳', style: TextStyle(fontSize: 36)),
+                  SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '程序员做饭指南',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        '版本 0.2.0 · 离线可用',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                    ],
+                        SizedBox(height: 4),
+                        Text(
+                          '版本 0.3.0 · 离线可用',
+                          style: TextStyle(
+                            color: AppTheme.lime,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _InfoCard(
+              title: '菜谱来源与致谢',
+              accent: AppTheme.lime,
+              children: [
+                Text(db?.attribution ??
+                    '菜谱内容来自 Anduin2017/HowToCook，致谢原作者与贡献者。'),
+                const SizedBox(height: 8),
+                const SelectableText(
+                    'https://github.com/Anduin2017/HowToCook'),
+                const SizedBox(height: 6),
+                Text('许可：${db?.license ?? 'Unlicense'}（公共领域）'),
+                const SizedBox(height: 8),
+                Text(
+                    '共 ${db?.recipes.length ?? 0} 道菜已打包进 App，可完全离线浏览。'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const _InfoCard(
+              title: '功能参考',
+              accent: AppTheme.lavender,
+              children: [
+                Text(
+                  '交互灵感参考微信小程序 LeeJim/HowToCookOnMiniprogram：'
+                  '分类浏览、搜索、分节详情（原料/计算/操作）、步骤引导、步骤计时、本地收藏。',
+                ),
+                SizedBox(height: 8),
+                SelectableText(
+                  'https://github.com/LeeJim/HowToCookOnMiniprogram',
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 16),
-          _InfoCard(
-            title: '菜谱来源与致谢',
-            children: [
-              Text(db?.attribution ??
-                  '菜谱内容来自 Anduin2017/HowToCook，致谢原作者与贡献者。'),
-              const SizedBox(height: 8),
-              const SelectableText('https://github.com/Anduin2017/HowToCook'),
-              const SizedBox(height: 6),
-              Text('许可：${db?.license ?? 'Unlicense'}（公共领域）'),
-              const SizedBox(height: 8),
-              Text('共 ${db?.recipes.length ?? 0} 道菜已打包进 App，可完全离线浏览。'),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const _InfoCard(
-            title: '功能参考',
-            children: [
-              Text(
-                '交互灵感参考微信小程序 LeeJim/HowToCookOnMiniprogram：'
-                '分类侧栏浏览、搜索、分节详情（原料/计算/操作）、步骤引导、步骤计时、本地收藏。',
-              ),
-              SizedBox(height: 8),
-              SelectableText(
-                'https://github.com/LeeJim/HowToCookOnMiniprogram',
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const _InfoCard(
-            title: '本仓库',
-            children: [
-              SelectableText(
-                'https://github.com/lixiangyong9131/HowToCook-mobile',
-              ),
-              SizedBox(height: 8),
-              Text(
-                '网页版可作补充参考：https://howtocook.aiursoft.com\n'
-                '当前版本以文本菜谱为主，步骤配图未内置。',
-              ),
-            ],
-          ),
-        ],
+            const SizedBox(height: 12),
+            const _InfoCard(
+              title: '本仓库',
+              accent: AppTheme.orange,
+              children: [
+                SelectableText(
+                  'https://github.com/lixiangyong9131/HowToCook-mobile',
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'v0.3 视觉语言：圆角编辑风、浮动黑胶囊导航、石灰/薰衣草紫高对比动效。',
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -99,31 +116,48 @@ class AboutScreen extends StatelessWidget {
 
 class _InfoCard extends StatelessWidget {
   final String title;
+  final Color accent;
   final List<Widget> children;
-  const _InfoCard({required this.title, required this.children});
+  const _InfoCard({
+    required this.title,
+    required this.children,
+    this.accent = AppTheme.lime,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFFE0B2)),
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+        border: Border.all(color: const Color(0xFFE8E8ED)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 16,
-              color: AppTheme.seed,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: accent,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           ...children,
         ],
       ),

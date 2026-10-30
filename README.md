@@ -6,15 +6,15 @@
 
 ## 功能
 
-交互参考微信小程序 [LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)，并做成更精致的 Flutter Material 3 界面：
+交互参考微信小程序 [LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)，v0.3 采用编辑风高对比视觉 + 六种精致动效：
 
-- 首页：左侧分类侧栏 + 菜谱卡片（编号 / 难度 / 收藏标记）
-- 搜索：圆角搜索框，结果带分类标签
-- 详情：渐变头图、分节 Tab（原料 / 计算 / 操作等）、步骤「下一步」引导、步骤内嵌计时器
-- 收藏：本地持久化（SharedPreferences），「我的收藏」一键回看
-- 我的：致谢 Anduin2017/HowToCook、许可与仓库信息
+- 视觉：浅灰底、大圆角卡片、石灰/薰衣草紫/黑白高对比、底部浮动黑胶囊导航
+- 首页：大标题「今天吃什么」、搜索胶囊、叠卡展开分类、黑色「随便做一道」随机入口
+- 动效：完成反馈（挤压→对勾→粒子）、勾选联动进度环与滚动分数、叠卡扇出、步骤吸附时间线、惯性滚轮计时、圆形扩散转场
+- 详情：深色头图、原料勾选联动、操作步骤吸附时间线 + 完成按钮、收藏缩放、惯性计时器
+- 收藏 / 我的：同一视觉语言；致谢 Anduin2017/HowToCook（Unlicense）
 - Android + iOS 工程（含 `ios/`）
-- 完全离线浏览（文本菜谱打包进 App；步骤配图未内置）
+- 完全离线浏览（373 道文本菜谱打包进 App；步骤配图未内置）
 
 ## 本地运行（Flutter）
 
