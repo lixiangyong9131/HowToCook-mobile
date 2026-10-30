@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 import '../services/video_search_service.dart';
 import '../theme/app_theme.dart';
@@ -46,7 +47,7 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
     final bvid = _bvid;
     if (bvid.isEmpty) return widget.video.watchUrl;
     return 'https://player.bilibili.com/player.html'
-        '?bvid=$bvid&high_quality=1&danmaku=0&autoplay=1&as_wide=1';
+        '?bvid=$bvid&high_quality=1&danmaku=0&autoplay=1&muted=0&as_wide=1';
   }
 
   String get _mobileUrl {
@@ -68,8 +69,20 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
   @override
   void initState() {
     super.initState();
-    _controller = WebViewController();
+    _controller = _buildController();
     _configureAndLoad();
+  }
+
+  WebViewController _buildController() {
+    // iOS: empty mediaTypesRequiringUserAction + inline playback so autoplay works.
+    if (!kIsWeb && Platform.isIOS) {
+      final params = WebKitWebViewControllerCreationParams(
+        allowsInlineMediaPlayback: true,
+        mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
+      );
+      return WebViewController.fromPlatformCreationParams(params);
+    }
+    return WebViewController();
   }
 
   Future<void> _configureAndLoad() async {
@@ -99,22 +112,11 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
         onPageFinished: (_) async {
           if (!mounted) return;
           setState(() => _loading = false);
-          // Autoplay nudge (mediaPlaybackRequiresUserGesture=false).
-          try {
-            await _controller.runJavaScript('''
-(function(){
-  try {
-    var v=document.querySelector('video');
-    if(v){ var p=v.play(); if(p&&p.catch) p.catch(function(){}); }
-    var sels=['.bpx-player-ctrl-play','.player-mobile-btn-start','.bilibili-player-video-btn-start'];
-    for (var j=0;j<sels.length;j++){
-      var b=document.querySelector(sels[j]);
-      if(b){ b.click(); break; }
-    }
-  } catch(e) {}
-})();
-''');
-          } catch (_) {}
+          // Autoplay nudge: muted play → click → delayed retries.
+          await _nudgeAutoplay();
+          Future<void>.delayed(const Duration(milliseconds: 450), _nudgeAutoplay);
+          Future<void>.delayed(const Duration(milliseconds: 1200), _nudgeAutoplay);
+          Future<void>.delayed(const Duration(milliseconds: 2200), _nudgeAutoplay);
           // Soften mobile chrome for m.bilibili mode.
           if (_mode == 1) {
             try {
@@ -173,6 +175,36 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
     );
 
     await _loadCurrent();
+  }
+
+
+  Future<void> _nudgeAutoplay() async {
+    if (!mounted) return;
+    try {
+      await _controller.runJavaScript("""
+(function(){
+  try {
+    var v=document.querySelector('video');
+    if(v){
+      v.muted=true;
+      v.playsInline=true;
+      v.setAttribute('playsinline','');
+      v.setAttribute('webkit-playsinline','');
+      var p=v.play();
+      if(p&&p.catch) p.catch(function(){});
+      setTimeout(function(){ try{ v.muted=false; }catch(e){} }, 800);
+    }
+    var sels=['.bpx-player-ctrl-play','.player-mobile-btn-start',
+      '.bilibili-player-video-btn-start','.play-btn',
+      'button[aria-label*="播放"]','.bmpui-btn-play'];
+    for (var j=0;j<sels.length;j++){
+      var b=document.querySelector(sels[j]);
+      if(b){ b.click(); break; }
+    }
+  } catch(e) {}
+})();
+""");
+    } catch (_) {}
   }
 
   Future<void> _loadCurrent() async {

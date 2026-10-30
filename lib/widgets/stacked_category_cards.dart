@@ -185,8 +185,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     // Soft spring = lingering coast then fold. Stiffness low → 延迟.
     final spring = SpringDescription(
       mass: 1,
-      stiffness: 95,
-      damping: 16,
+      stiffness: 70,
+      damping: 14,
     );
     final sim = SpringSimulation(spring, _offset, target, velocity);
     _coastCtrl.animateWith(sim);
@@ -247,8 +247,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
         if (!_expanded)
           Text(
             widget.openOnSwipeSettle
-                ? '自由甩动可跨多张 · 惯性停稳打开 · 点按打开当前'
-                : '自由甩动可跨多张再停 · 划过的叠在上部 · 点按打开',
+                ? '甩动叠卡可跨多张 · 过渡动画后停稳打开 · 点按打开当前'
+                : '甩动叠卡可跨多张 · 卡片过渡后停稳 · 点按打开',
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -316,14 +316,13 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
 
   Widget _buildWallet(int n) {
     // Origin Y of the focus slot — leave room for the upper (passed) pile.
-    final focusOrigin = _upperPeek * _visibleAbove.toDouble();
+    final focusOrigin = _upperPeek * _visibleAbove.toDouble() + 6;
 
     // Draw far cards first so nearer ones paint on top.
     final indices = List<int>.generate(n, (i) => i);
     indices.sort((a, b) {
       final da = (a - _offset).abs();
       final db = (b - _offset).abs();
-      // Farther first; among equals prefer higher index under.
       final c = db.compareTo(da);
       return c != 0 ? c : a.compareTo(b);
     });
@@ -349,33 +348,50 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     final paletteI = _paletteIndex(cat);
     final rel = index - _offset; // <0 passed/upper, 0 focus, >0 lower
 
-    // Cull cards too far from focus to keep the pile readable.
-    if (rel < -(_visibleAbove + 0.6) || rel > (_visibleBehind + 0.6)) {
+    // Soft edge fade instead of hard cull — mid-scroll frames stay smooth.
+    if (rel < -(_visibleAbove + 1.0) || rel > (_visibleBehind + 1.0)) {
       return const SizedBox.shrink();
     }
 
-    double top;
-    double scale;
-    double opacity;
-    double sideInset;
+    final depthUp = (-rel).clamp(0.0, _visibleAbove + 0.8);
+    final depthDown = rel.clamp(0.0, _visibleBehind + 0.8);
+    final upT = Curves.easeInOutCubic.transform(
+      (depthUp / (_visibleAbove + 0.8)).clamp(0.0, 1.0),
+    );
+    final downT = Curves.easeInOutCubic.transform(
+      (depthDown / (_visibleBehind + 0.8)).clamp(0.0, 1.0),
+    );
+
+    late double top;
+    late double scale;
+    late double opacity;
+    late double sideInset;
+    late double elev;
 
     if (rel <= 0) {
-      // Passed cards rise into the upper peek pile; focus sits at origin.
-      final depthUp = (-rel).clamp(0.0, _visibleAbove + 0.5);
       top = focusOrigin - depthUp * _upperPeek;
-      scale = 1.0 - depthUp * 0.03;
-      opacity = (1.0 - depthUp * 0.12).clamp(0.35, 1.0);
-      sideInset = 6.0 * depthUp;
+      scale = 1.0 - upT * 0.06;
+      opacity = (1.0 - upT * 0.45).clamp(0.25, 1.0);
+      sideInset = 10.0 * upT;
+      elev = 10.0 * (1.0 - upT);
     } else {
-      // Remaining deck peeks below the focus (classic Wallet stack).
-      final depthDown = rel.clamp(0.0, _visibleBehind + 0.5);
       top = focusOrigin + depthDown * _peek;
-      scale = 1.0 - depthDown * 0.035;
-      opacity = (1.0 - depthDown * 0.08).clamp(0.4, 1.0);
-      sideInset = 8.0 * depthDown;
+      scale = 1.0 - downT * 0.07;
+      opacity = (1.0 - downT * 0.35).clamp(0.3, 1.0);
+      sideInset = 12.0 * downT;
+      elev = 10.0 * (1.0 - downT);
     }
 
-    final isFront = rel.abs() < 0.45;
+    // Front card lifts while between integers (visible card morph).
+    final frac = (rel.abs() < 1) ? (1.0 - rel.abs()) : 0.0;
+    final lift = Curves.easeOut.transform(frac.clamp(0.0, 1.0));
+    final dragLift = _dragging ? 1.0 : 0.55;
+    scale += 0.045 * lift * dragLift;
+    top -= 10.0 * lift * dragLift;
+    elev += 14.0 * lift;
+
+    final isFront = rel.abs() < 0.5;
+    final tilt = (rel <= 0 ? -upT : downT) * 0.06;
 
     return Positioned(
       top: top,
@@ -383,27 +399,45 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
       right: sideInset,
       child: Opacity(
         opacity: opacity,
-        child: Transform.scale(
-          scale: scale,
-          alignment: Alignment.topCenter,
-          child: GestureDetector(
-            onTap: () {
-              if (!isFront) return;
-              HapticFeedback.lightImpact();
-              widget.onOpen(cat);
-            },
-            child: _cardBody(cat, paletteI),
+        child: Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.00115)
+            ..rotateX(tilt),
+          child: Transform.scale(
+            scale: scale,
+            alignment: Alignment.topCenter,
+            child: GestureDetector(
+              onTap: () {
+                if (!isFront) return;
+                HapticFeedback.lightImpact();
+                widget.onOpen(cat);
+              },
+              child: _cardBody(
+                cat,
+                paletteI,
+                elevation: elev,
+                emphasize: isFront,
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _cardBody(CategoryInfo cat, int paletteIndex) {
+  Widget _cardBody(
+    CategoryInfo cat,
+    int paletteIndex, {
+    double elevation = 10,
+    bool emphasize = false,
+  }) {
     final color = categoryAccent(cat.id, paletteIndex);
     final dark = isDarkCard(color);
     final fg = dark ? Colors.white : AppTheme.navy;
     final count = widget.counts[cat.id] ?? 0;
+    final blur = 10.0 + elevation * 0.5;
+    final yOff = 4.0 + elevation * 0.35;
 
     return Container(
       height: _cardH,
@@ -413,12 +447,17 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
         borderRadius: BorderRadius.circular(AppTheme.radius),
         border: color == Colors.white
             ? Border.all(color: AppTheme.navy.withValues(alpha: 0.12))
-            : null,
+            : (emphasize
+                ? Border.all(
+                    color: Colors.white.withValues(alpha: dark ? 0.22 : 0.35),
+                    width: 1.2,
+                  )
+                : null),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.navy.withValues(alpha: 0.18),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+            color: AppTheme.navy.withValues(alpha: 0.14 + elevation * 0.008),
+            blurRadius: blur,
+            offset: Offset(0, yOff),
           ),
         ],
       ),

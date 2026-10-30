@@ -30,7 +30,7 @@ void main() {
     expect(find.byType(PageView), findsNothing);
     expect(find.text('分类浏览'), findsOneWidget);
     expect(find.text('展开 ↓'), findsOneWidget);
-    expect(find.textContaining('自由甩动'), findsOneWidget);
+    expect(find.textContaining('甩动叠卡'), findsOneWidget);
   });
 
   testWidgets('fling advances past more than one card then settles', (tester) async {

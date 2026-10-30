@@ -35,14 +35,14 @@ Future<void> openRecipeDetail(
     return;
   }
 
-  // Warm process-image index + kick disk/network cache before the route
+  // Warm process-image index + kick asset/cache before the route
   // paints Module1 — avoids empty 做法大图 on the browse→detail cold path.
   final warm = r;
   await ProcessImageService.instance.ensureLoaded();
   if (ProcessImageService.instance.hasImage(warm)) {
     // Fire-and-forget prefetch; detail viewer will reuse the cached file.
     // ignore: unawaited_futures
-    ProcessImageService.instance.cachedFileFor(warm);
+    ProcessImageService.instance.loadFor(warm);
   }
 
   if (!context.mounted) return;

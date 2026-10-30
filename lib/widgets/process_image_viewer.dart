@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -9,12 +8,11 @@ import '../theme/app_theme.dart';
 
 /// Zoomable full-process recipe card (9:16 AI infographic).
 ///
-/// Restored from [eaa0006] InteractiveViewer pan/pinch (the working 上滑
-/// browse-through-image behavior before tap-fullscreen was added in
-/// 05242b9). Tap opens the same fullscreen maximize route as a committed
-/// upward fling — not a separate inline zoom.
+/// Keeps the v0.6.6/0.6.7 InteractiveViewer 上滑 browse. Tap and a committed
+/// upward fling share one maximize path (slide-up + fade) — not a separate
+/// inline zoom.
 class ProcessImageViewer extends StatefulWidget {
-  final Future<File?> Function() loader;
+  final Future<ProcessImageBytes?> Function() loader;
   final String? remoteUrl;
   final VoidCallback? onFallbackSteps;
 
@@ -30,10 +28,9 @@ class ProcessImageViewer extends StatefulWidget {
 }
 
 class _ProcessImageViewerState extends State<ProcessImageViewer> {
-  late Future<File?> _future;
+  late Future<ProcessImageBytes?> _future;
   final _transform = TransformationController();
 
-  /// Restored from eaa0006 — track scale so we only maximize at identity.
   bool get _isIdentity {
     final scale = _transform.value.getMaxScaleOnAxis();
     return (scale - 1.0).abs() < 0.08;
@@ -65,7 +62,7 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
     });
   }
 
-  /// Shared maximize path: tap and committed swipe-up fling both call this.
+  /// Shared maximize path for tap and committed swipe-up fling.
   void _maximize(Widget imageChild) {
     if (!_isIdentity) return;
     HapticFeedback.lightImpact();
@@ -74,14 +71,57 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
       PageRouteBuilder<void>(
         opaque: false,
         barrierColor: Colors.black87,
-        transitionDuration: const Duration(milliseconds: 260),
-        reverseTransitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (ctx, anim, _) {
+        transitionDuration: const Duration(milliseconds: 320),
+        reverseTransitionDuration: const Duration(milliseconds: 240),
+        pageBuilder: (ctx, anim, sec) {
+          final curved = CurvedAnimation(
+            parent: anim,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          // Same “finish the up-swipe” feel: slide up + slight scale + fade.
           return FadeTransition(
-            opacity: anim,
-            child: _FullscreenProcessImage(image: imageChild),
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.06),
+                end: Offset.zero,
+              ).animate(curved),
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.94, end: 1).animate(curved),
+                child: _FullscreenProcessImage(image: imageChild),
+              ),
+            ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _placeholder() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('暂无图片',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            Text(
+              ProcessImageService.attribution,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppTheme.muted, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            if (widget.onFallbackSteps != null)
+              TextButton(
+                onPressed: widget.onFallbackSteps,
+                child: const Text('返回步骤'),
+              ),
+            TextButton(onPressed: _retry, child: const Text('重试')),
+          ],
+        ),
       ),
     );
   }
@@ -90,26 +130,17 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
   Widget build(BuildContext context) {
     return ColoredBox(
       color: AppTheme.bg,
-      child: FutureBuilder<File?>(
+      child: FutureBuilder<ProcessImageBytes?>(
         future: _future,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
+            // Assets resolve in a flash; keep spinner minimal.
             return const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: AppTheme.navy),
-                  SizedBox(height: 12),
-                  Text(
-                    '正在加载整图做法…',
-                    style: TextStyle(color: AppTheme.muted),
-                  ),
-                ],
-              ),
+              child: CircularProgressIndicator(color: AppTheme.navy),
             );
           }
-          final file = snap.data;
-          if (file == null) {
+          final data = snap.data;
+          if (data == null) {
             final url = widget.remoteUrl;
             if (url != null && url.isNotEmpty) {
               return _NetworkProcessImage(
@@ -120,50 +151,32 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
                 onMaximize: _maximize,
               );
             }
-            // Keep 「暂无图片」 placeholder from b2b6f70.
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('暂无图片',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 8),
-                    Text(
-                      ProcessImageService.attribution,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: AppTheme.muted,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (widget.onFallbackSteps != null)
-                      TextButton(
-                        onPressed: widget.onFallbackSteps,
-                        child: const Text('返回步骤'),
-                      ),
-                    TextButton(
-                      onPressed: _retry,
-                      child: const Text('重试下载'),
-                    ),
-                  ],
-                ),
+            return _placeholder();
+          }
+
+          final Widget img;
+          if (data.assetBytes != null) {
+            img = Image.memory(
+              Uint8List.fromList(data.assetBytes!),
+              fit: BoxFit.contain,
+              width: double.infinity,
+              filterQuality: FilterQuality.high,
+              gaplessPlayback: true,
+              errorBuilder: (_, __, ___) => const Center(
+                child: Text('图片损坏'),
+              ),
+            );
+          } else {
+            img = Image.file(
+              data.file!,
+              fit: BoxFit.contain,
+              width: double.infinity,
+              filterQuality: FilterQuality.high,
+              errorBuilder: (_, __, ___) => const Center(
+                child: Text('图片损坏，请重试'),
               ),
             );
           }
-
-          final img = Image.file(
-            file,
-            fit: BoxFit.contain,
-            width: double.infinity,
-            filterQuality: FilterQuality.high,
-            errorBuilder: (_, __, ___) => const Center(
-              child: Text('图片损坏，请重试下载'),
-            ),
-          );
           return _ZoomableImage(
             transform: _transform,
             onMaximize: () => _maximize(img),
@@ -198,7 +211,7 @@ class _NetworkProcessImage extends StatelessWidget {
       width: double.infinity,
       filterQuality: FilterQuality.high,
       headers: const {
-        'User-Agent': 'HowToCook-mobile/0.6.6',
+        'User-Agent': 'HowToCook-mobile/0.6.8',
         'Accept': 'image/jpeg,image/*;q=0.8',
       },
       loadingBuilder: (context, child, progress) {
@@ -227,10 +240,7 @@ class _NetworkProcessImage extends StatelessWidget {
                   onPressed: onFallbackSteps,
                   child: const Text('返回步骤'),
                 ),
-              TextButton(
-                onPressed: onRetry,
-                child: const Text('重试下载'),
-              ),
+              TextButton(onPressed: onRetry, child: const Text('重试下载')),
             ],
           ),
         ),
@@ -244,13 +254,8 @@ class _NetworkProcessImage extends StatelessWidget {
   }
 }
 
-/// eaa0006 InteractiveViewer core + non-interfering tap / upward-fling maximize.
-///
-/// Vertical *pan* stays on InteractiveViewer (restored 上滑浏览). We only
-/// listen for a quick upward *fling* at identity scale via
-/// [onInteractionEnd] velocity — not a competing Drag gesture that would
-/// steal pans the way 05242b9+ did.
-class _ZoomableImage extends StatelessWidget {
+/// InteractiveViewer 上滑 browse + tap/fling → same maximize.
+class _ZoomableImage extends StatefulWidget {
   final TransformationController transform;
   final Widget child;
   final VoidCallback onMaximize;
@@ -261,9 +266,35 @@ class _ZoomableImage extends StatelessWidget {
     required this.onMaximize,
   });
 
+  @override
+  State<_ZoomableImage> createState() => _ZoomableImageState();
+}
+
+class _ZoomableImageState extends State<_ZoomableImage> {
+  Offset? _focalStart;
+  DateTime? _downAt;
+
   bool _isIdentity(Matrix4 m) {
     final scale = m.getMaxScaleOnAxis();
     return (scale - 1.0).abs() < 0.08;
+  }
+
+  void _maybeMaximizeFromEnd(ScaleEndDetails details) {
+    if (!_isIdentity(widget.transform.value)) return;
+    final v = details.velocity.pixelsPerSecond;
+    // Committed upward fling → maximize (same path as tap).
+    if (v.dy < -900) {
+      widget.onMaximize();
+      return;
+    }
+    // Tap: short press, tiny travel, near-zero velocity.
+    final start = _focalStart;
+    final t0 = _downAt;
+    if (start == null || t0 == null) return;
+    final dt = DateTime.now().difference(t0);
+    if (dt > const Duration(milliseconds: 450)) return;
+    if (v.distance > 220) return;
+    widget.onMaximize();
   }
 
   @override
@@ -273,28 +304,36 @@ class _ZoomableImage extends StatelessWidget {
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              return GestureDetector(
-                behavior: HitTestBehavior.deferToChild,
-                // Tap → same maximize as committed up-fling.
-                onTap: () {
-                  if (_isIdentity(transform.value)) onMaximize();
+              return InteractiveViewer(
+                transformationController: widget.transform,
+                minScale: 0.8,
+                maxScale: 4,
+                onInteractionStart: (details) {
+                  if (details.pointerCount == 1) {
+                    _focalStart = details.focalPoint;
+                    _downAt = DateTime.now();
+                  } else {
+                    _focalStart = null;
+                    _downAt = null;
+                  }
                 },
-                child: InteractiveViewer(
-                  transformationController: transform,
-                  minScale: 0.8,
-                  maxScale: 4,
-                  // eaa0006: pan + pinch fully enabled (上滑浏览).
-                  onInteractionEnd: (details) {
-                    if (!_isIdentity(transform.value)) return;
-                    final v = details.velocity.pixelsPerSecond.dy;
-                    // Strong upward fling at identity → same maximize as tap.
-                    if (v < -900) onMaximize();
-                  },
-                  child: SizedBox(
-                    width: constraints.maxWidth,
-                    height: constraints.maxHeight,
-                    child: Center(child: child),
-                  ),
+                onInteractionUpdate: (details) {
+                  final start = _focalStart;
+                  if (start == null) return;
+                  // If finger moved like a pan, cancel tap.
+                  if ((details.focalPoint - start).distance > 18) {
+                    _focalStart = null;
+                  }
+                },
+                onInteractionEnd: (details) {
+                  _maybeMaximizeFromEnd(details);
+                  _focalStart = null;
+                  _downAt = null;
+                },
+                child: SizedBox(
+                  width: constraints.maxWidth,
+                  height: constraints.maxHeight,
+                  child: Center(child: widget.child),
                 ),
               );
             },

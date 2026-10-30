@@ -427,7 +427,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             child: ProcessImageViewer(
               key: ValueKey('process-${widget.recipe.id}'),
               loader: () =>
-                  ProcessImageService.instance.cachedFileFor(widget.recipe),
+                  ProcessImageService.instance.loadFor(widget.recipe),
               remoteUrl:
                   ProcessImageService.instance.remoteUrlFor(widget.recipe),
             ),

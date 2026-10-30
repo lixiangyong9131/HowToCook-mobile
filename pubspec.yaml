@@ -1,7 +1,7 @@
 name: how_to_cook
 description: 程序员做饭指南移动端 — 离线菜谱，致敬 Anduin2017/HowToCook
 publish_to: 'none'
-version: 0.6.7+15
+version: 0.6.8+16
 
 environment:
   sdk: ^3.9.2
@@ -20,6 +20,7 @@ dependencies:
   url_launcher: ^6.3.1
   webview_flutter: ^4.13.0
   webview_flutter_android: ^4.12.0
+  webview_flutter_wkwebview: ^3.23.0
 
 dev_dependencies:
   flutter_test:
@@ -37,3 +38,4 @@ flutter:
     - assets/branding/logo_transparent_1024.png
     - assets/branding/logo_transparent_512.png
     - assets/icons/doodle/
+    - assets/process_images/
