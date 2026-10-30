@@ -43,6 +43,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     _mergedIngredients = _buildMergedIngredients();
     _detailTabs = _computeTabs();
     _tabs = TabController(length: _detailTabs.length, vsync: this);
+    _tabs.addListener(() {
+      if (mounted && !_tabs.indexIsChanging) setState(() {});
+    });
     // Index is loaded in main(); sync check so Module1 does not flash 步骤
     // then swap — that swap broke 做法大图 on the 最近浏览 cold path.
     _hasProcessImage =
@@ -233,6 +236,15 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
       body: Stack(
         children: [
           NestedScrollView(
+            // Lock outer vertical scroll on 做法大图 so pull-up enlarge
+            // GestureDetector wins (otherwise NestedScrollView steals flings).
+            physics: (_hasProcessImage &&
+                    _detailTabs.isNotEmpty &&
+                    _detailTabs[_tabs.index.clamp(0, _detailTabs.length - 1)]
+                            .kind ==
+                        _TabKind.cook)
+                ? const NeverScrollableScrollPhysics()
+                : const ClampingScrollPhysics(),
             headerSliverBuilder: (context, inner) {
               return [
                 SliverAppBar(
