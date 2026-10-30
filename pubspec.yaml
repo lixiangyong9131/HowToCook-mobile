@@ -1,0 +1,24 @@
+name: how_to_cook
+description: 程序员做饭指南移动端 — 离线菜谱，致敬 Anduin2017/HowToCook
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_markdown: ^0.7.7+1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/recipes_db.json
+    - assets/HOWTOCOOK_LICENSE
