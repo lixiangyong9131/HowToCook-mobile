@@ -1,4 +1,4 @@
-import 'dart:ui' show ImageFilter;
+import 'dart:ui' show ImageFilter, lerpDouble;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,11 +7,12 @@ import '../models/recipe.dart';
 import '../theme/app_theme.dart';
 import '../theme/doodle_icons.dart';
 
-/// Apple Wallet–style category stack with **one** sharp focus card.
+/// Apple Wallet–style category stack with inertia-wheel swipe physics.
 ///
-/// Folded: vertical center-focus pager — off-focus cards blur/fade (title
-/// still readable). Expanded: fan to a list via [AnimatedPositioned] +
-/// [RepaintBoundary] (no per-frame setState rebuild storms).
+/// Folded: vertical pager — velocity + friction, snap to nearest card,
+/// rubber-band ends (spring stiffness 300 / damping 20). Only the center
+/// card is sharp & larger; neighbors blur/fade (name still readable).
+/// Expanded: [AnimatedPositioned] + [RepaintBoundary] fan-out list.
 class StackedCategoryCards extends StatefulWidget {
   final List<CategoryInfo> categories;
   final Map<String, int> counts;
@@ -41,20 +42,19 @@ class StackedCategoryCards extends StatefulWidget {
 class _StackedCategoryCardsState extends State<StackedCategoryCards> {
   static const _cardH = 104.0;
   static const _gap = 12.0;
-  static const _peek = 28.0;
-  static const _visibleBehind = 3;
-  /// Folded viewport shows ~3 slots; focus sits in the middle.
-  static const _foldSlots = 3;
   static const _foldAnim = Duration(milliseconds: 320);
+  /// Viewport shows ~2.4 cards so neighbors peek above/below focus.
+  static const _viewportFraction = 0.42;
 
   late bool _expanded;
-  /// Index of the focused (sharp, center) card in [categories].
+  PageController? _pageCtrl;
   int _focus = 0;
 
   @override
   void initState() {
     super.initState();
     _expanded = widget.initiallyExpanded && !widget.autoFanOnMount;
+    _initPageCtrl();
     if (widget.autoFanOnMount) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await Future<void>.delayed(const Duration(milliseconds: 180));
@@ -62,6 +62,29 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards> {
         _expand();
       });
     }
+  }
+
+  void _initPageCtrl() {
+    _pageCtrl?.dispose();
+    _pageCtrl = PageController(
+      initialPage: _focus,
+      viewportFraction: _viewportFraction,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant StackedCategoryCards oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.categories.length != widget.categories.length) {
+      _focus = _focus.clamp(0, (widget.categories.length - 1).clamp(0, 9999));
+      _initPageCtrl();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageCtrl?.dispose();
+    super.dispose();
   }
 
   int get _n => widget.categories.length;
@@ -75,26 +98,31 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards> {
   void _collapse() {
     if (!_expanded) return;
     HapticFeedback.selectionClick();
-    setState(() => _expanded = false);
+    setState(() {
+      _expanded = false;
+      // Re-sync pager to current focus after collapse.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_pageCtrl != null && _pageCtrl!.hasClients) {
+          _pageCtrl!.jumpToPage(_focus);
+        }
+      });
+    });
   }
 
   void _toggle() => _expanded ? _collapse() : _expand();
 
-  void _shiftFocus(int delta) {
-    if (_n < 2) return;
-    HapticFeedback.lightImpact();
-    setState(() {
-      _focus = (_focus + delta) % _n;
-      if (_focus < 0) _focus += _n;
-    });
-    if (widget.openOnSwipeSettle) {
-      widget.onOpen(widget.categories[_focus]);
-    }
-  }
-
   int _paletteIndex(CategoryInfo cat) {
     final i = widget.categories.indexWhere((c) => c.id == cat.id);
     return i < 0 ? 0 : i;
+  }
+
+  void _onPageSettled(int i) {
+    if (i == _focus) return;
+    HapticFeedback.selectionClick();
+    setState(() => _focus = i);
+    if (widget.openOnSwipeSettle && _n > 0) {
+      widget.onOpen(widget.categories[i]);
+    }
   }
 
   @override
@@ -103,10 +131,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards> {
     final n = cats.length;
     if (n == 0) return const SizedBox.shrink();
 
-    final peekN = n.clamp(0, _visibleBehind + 1);
-    final collapsedH = _cardH * _foldSlots + _gap * (_foldSlots - 1) + 8;
-    final stackPeekH = _cardH + _peek * (peekN - 1).clamp(0, 99) + 24;
-    final foldedH = collapsedH > stackPeekH ? collapsedH : stackPeekH;
+    // Folded height: enough for center + peeks (~1/viewportFraction cards).
+    final foldedH = _cardH / _viewportFraction + 12;
     final expandedH = n * (_cardH + _gap) - _gap;
 
     return Column(
@@ -152,8 +178,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards> {
         if (!_expanded)
           Text(
             widget.openOnSwipeSettle
-                ? '上滑选定并打开 · 点按打开当前'
-                : '上滑切换下一张 · 点按打开',
+                ? '惯性上滑选定并打开 · 点按打开当前'
+                : '惯性上滑切换 · 点按打开',
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -165,13 +191,12 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards> {
           duration: _foldAnim,
           curve: Curves.easeOutCubic,
           height: (_expanded ? expandedH : foldedH) + 8,
-          child: _expanded ? _buildExpanded(n) : _buildFolded(n),
+          child: _expanded ? _buildExpanded(n) : _buildInertiaWheel(n),
         ),
       ],
     );
   }
 
-  /// Expanded list: each card animates with [AnimatedPositioned].
   Widget _buildExpanded(int n) {
     return Stack(
       clipBehavior: Clip.none,
@@ -195,6 +220,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards> {
                   cat: widget.categories[i],
                   count: widget.counts[widget.categories[i].id] ?? 0,
                   paletteIndex: i,
+                  emphasis: 1,
                 ),
               ),
             ),
@@ -203,113 +229,153 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards> {
     );
   }
 
-  /// Folded: center-focus stack. Only depth-0 is sharp; others blur/fade.
-  Widget _buildFolded(int n) {
-    final depths = List.generate(
-      n.clamp(0, _visibleBehind + 1),
-      (d) => d,
-    );
+  /// Inertia wheel: PageView + spring snap + blur by distance from center.
+  Widget _buildInertiaWheel(int n) {
+    final ctrl = _pageCtrl;
+    if (ctrl == null) return const SizedBox.shrink();
 
-    return GestureDetector(
-      onVerticalDragEnd: (d) {
-        final v = d.primaryVelocity ?? 0;
-        if (v < -400) {
-          _shiftFocus(1); // swipe up → next
-        } else if (v > 400) {
-          _shiftFocus(-1); // swipe down → previous
-        }
-      },
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final h = constraints.maxHeight;
-          // Focus card vertically centered in the folded viewport.
-          final focusTop = ((h - _cardH) / 2).clamp(0.0, h);
+    return Container(
+      decoration: BoxDecoration(
+        // Soft cream stage — not purple.
+        color: AppTheme.cream.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+        border: Border.all(
+          color: AppTheme.coral.withValues(alpha: 0.22),
+        ),
+      ),
+      clipBehavior: Clip.hardEdge,
+      child: PageView.builder(
+        scrollDirection: Axis.vertical,
+        controller: ctrl,
+        itemCount: n,
+        physics: const _WalletInertiaPhysics(
+          parent: BouncingScrollPhysics(
+            decelerationRate: ScrollDecelerationRate.normal,
+          ),
+        ),
+        onPageChanged: _onPageSettled,
+        itemBuilder: (context, i) {
+          final cat = widget.categories[i];
+          // Card chrome cached in RepaintBoundary; only transform/blur ticks.
+          final cached = RepaintBoundary(
+            child: _CategoryCard(
+              cat: cat,
+              count: widget.counts[cat.id] ?? 0,
+              paletteIndex: _paletteIndex(cat),
+              emphasis: 1,
+              showFocusRing: false,
+            ),
+          );
+          return AnimatedBuilder(
+            animation: ctrl,
+            child: cached,
+            builder: (context, child) {
+              final page = ctrl.hasClients
+                  ? (ctrl.page ?? _focus.toDouble())
+                  : _focus.toDouble();
+              final dist = (page - i).abs();
+              final focusT = (1.0 - dist).clamp(0.0, 1.0);
+              final sigma =
+                  lerpDouble(0, 6.5, (dist).clamp(0.0, 1.4) / 1.4)!;
+              final opacity = lerpDouble(0.42, 1.0, focusT)!;
+              final scale = lerpDouble(0.88, 1.06, focusT)!;
 
-          return Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.topCenter,
-            children: [
-              // Draw back → front so focus is on top.
-              for (final depth in depths.reversed)
-                _buildFocusCard(depth: depth, focusTop: focusTop),
-            ],
+              Widget card = child!;
+              // Coral focus ring overlay when centered (theme, not purple).
+              if (focusT > 0.85) {
+                card = DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(AppTheme.radius),
+                    border: Border.all(color: AppTheme.coral, width: 2.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.coral.withValues(alpha: 0.28),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: card,
+                );
+              }
+              if (sigma > 0.4) {
+                card = ImageFiltered(
+                  imageFilter: ImageFilter.blur(
+                    sigmaX: sigma,
+                    sigmaY: sigma,
+                  ),
+                  child: card,
+                );
+              }
+              return Center(
+                child: GestureDetector(
+                  onTap: () {
+                    if (dist > 0.35) {
+                      HapticFeedback.selectionClick();
+                      ctrl.animateToPage(
+                        i,
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutCubic,
+                      );
+                      return;
+                    }
+                    HapticFeedback.lightImpact();
+                    widget.onOpen(cat);
+                  },
+                  child: Opacity(
+                    opacity: opacity,
+                    child: Transform.scale(
+                      scale: scale,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        child: card,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
           );
         },
       ),
     );
   }
+}
 
-  Widget _buildFocusCard({required int depth, required double focusTop}) {
-    final idx = (_focus + depth) % _n;
-    final cat = widget.categories[idx];
-    final isFocus = depth == 0;
+/// Page-snapping scroll physics with spring rubber-band
+/// (stiffness ≈ 300, damping ≈ 20) — mirrors inertia timer wheel feel.
+class _WalletInertiaPhysics extends PageScrollPhysics {
+  const _WalletInertiaPhysics({super.parent});
 
-    // Behind cards sit below focus with peek; above-focus ghost for prev.
-    final top = isFocus
-        ? focusTop
-        : focusTop + depth * _peek;
-
-    // Distance from focus → blur / opacity. Blurred name still readable.
-    final sigma = isFocus ? 0.0 : (2.0 + depth * 2.2).clamp(2.0, 8.0);
-    final opacity = isFocus ? 1.0 : (0.72 - depth * 0.12).clamp(0.38, 0.72);
-    final scale = isFocus ? 1.0 : (1.0 - depth * 0.04).clamp(0.88, 1.0);
-    final hPad = isFocus ? 0.0 : 10.0 * depth;
-
-    Widget card = RepaintBoundary(
-      child: _CategoryCard(
-        cat: cat,
-        count: widget.counts[cat.id] ?? 0,
-        paletteIndex: _paletteIndex(cat),
-      ),
-    );
-
-    if (!isFocus) {
-      card = ImageFiltered(
-        imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-        child: Opacity(opacity: opacity, child: card),
-      );
-    }
-
-    return AnimatedPositioned(
-      key: ValueKey('fold-$depth-${cat.id}'),
-      duration: _foldAnim,
-      curve: Curves.easeOutCubic,
-      top: top,
-      left: hPad,
-      right: hPad,
-      height: _cardH,
-      child: AnimatedScale(
-        scale: scale,
-        duration: _foldAnim,
-        curve: Curves.easeOutCubic,
-        alignment: Alignment.center,
-        child: GestureDetector(
-          onTap: () {
-            if (!isFocus) {
-              // Tap a peek card → bring it to focus (still blurred until settled).
-              HapticFeedback.selectionClick();
-              setState(() => _focus = idx);
-              return;
-            }
-            HapticFeedback.lightImpact();
-            widget.onOpen(cat);
-          },
-          child: card,
-        ),
-      ),
-    );
+  @override
+  _WalletInertiaPhysics applyTo(ScrollPhysics? ancestor) {
+    return _WalletInertiaPhysics(parent: buildParent(ancestor));
   }
+
+  @override
+  SpringDescription get spring => const SpringDescription(
+        mass: 1,
+        stiffness: 300,
+        damping: 20,
+      );
 }
 
 class _CategoryCard extends StatelessWidget {
   final CategoryInfo cat;
   final int count;
   final int paletteIndex;
+  final double emphasis;
+  final bool showFocusRing;
 
   const _CategoryCard({
     required this.cat,
     required this.count,
     required this.paletteIndex,
+    this.emphasis = 1,
+    this.showFocusRing = false,
   });
 
   @override
@@ -317,22 +383,33 @@ class _CategoryCard extends StatelessWidget {
     final color = categoryAccent(cat.id, paletteIndex);
     final dark = isDarkCard(color);
     final fg = dark ? Colors.white : AppTheme.navy;
+    final titleSize = lerpDouble(18, 24, emphasis.clamp(0.0, 1.0))!;
+    final countSize = lerpDouble(26, 34, emphasis.clamp(0.0, 1.0))!;
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
       height: _StackedCategoryCardsState._cardH,
       padding: const EdgeInsets.symmetric(horizontal: 18),
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(AppTheme.radius),
-        border: color == Colors.white
-            ? Border.all(color: AppTheme.navy.withValues(alpha: 0.12))
-            : null,
+        border: showFocusRing
+            ? Border.all(color: AppTheme.coral, width: 2.5)
+            : (color == Colors.white
+                ? Border.all(color: AppTheme.navy.withValues(alpha: 0.12))
+                : null),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.navy.withValues(alpha: 0.18),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
+            color: AppTheme.navy.withValues(alpha: 0.14 + 0.1 * emphasis),
+            blurRadius: 12 + 8 * emphasis,
+            offset: Offset(0, 6 + 4 * emphasis),
           ),
+          if (showFocusRing)
+            BoxShadow(
+              color: AppTheme.coral.withValues(alpha: 0.28),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
         ],
       ),
       child: Row(
@@ -351,10 +428,13 @@ class _CategoryCard extends StatelessWidget {
           Expanded(
             child: Text(
               cat.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: fg,
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
+                fontSize: titleSize,
+                fontWeight:
+                    emphasis > 0.7 ? FontWeight.w900 : FontWeight.w700,
               ),
             ),
           ),
@@ -362,7 +442,7 @@ class _CategoryCard extends StatelessWidget {
             '$count',
             style: TextStyle(
               color: fg.withValues(alpha: 0.9),
-              fontSize: 32,
+              fontSize: countSize,
               fontWeight: FontWeight.w900,
               letterSpacing: -0.5,
             ),
