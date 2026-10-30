@@ -43,7 +43,6 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
   /// 0 = official embed, 1 = m.bilibili
   int _mode = 0;
   bool _alive = true;
-  final List<Timer> _nudgeTimers = [];
 
   /// WebView owns all gestures — avoids nested-gesture deadlock with dialog
   /// when tapping danmaku / fullscreen controls inside the player.
@@ -56,7 +55,7 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
     final bvid = _bvid;
     if (bvid.isEmpty) return widget.video.watchUrl;
     return 'https://player.bilibili.com/player.html'
-        '?bvid=$bvid&high_quality=1&danmaku=0&autoplay=1&muted=0&as_wide=1';
+        '?bvid=$bvid&high_quality=1&danmaku=0&autoplay=0&muted=0&as_wide=1';
   }
 
   String get _mobileUrl {
@@ -83,11 +82,14 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
   }
 
   WebViewController _buildController() {
-    // iOS: empty mediaTypesRequiringUserAction + inline playback so autoplay works.
+    // iOS: inline OK; require tap before media (no autoplay).
     if (!kIsWeb && Platform.isIOS) {
       final params = WebKitWebViewControllerCreationParams(
         allowsInlineMediaPlayback: true,
-        mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
+        mediaTypesRequiringUserAction: const {
+          PlaybackMediaTypes.audio,
+          PlaybackMediaTypes.video,
+        },
       );
       return WebViewController.fromPlatformCreationParams(params);
     }
@@ -104,7 +106,7 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
       if (!kIsWeb && Platform.isAndroid) {
         final platform = _controller.platform;
         if (platform is AndroidWebViewController) {
-          await platform.setMediaPlaybackRequiresUserGesture(false);
+          await platform.setMediaPlaybackRequiresUserGesture(true);
           await platform.setMixedContentMode(MixedContentMode.alwaysAllow);
           AndroidWebViewController.enableDebugging(false);
         }
@@ -122,20 +124,24 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
           onPageFinished: (_) async {
             if (!_alive || !mounted) return;
             setState(() => _loading = false);
-            await _nudgeAutoplay();
-            _scheduleNudge(const Duration(milliseconds: 450));
-            _scheduleNudge(const Duration(milliseconds: 1200));
-            _scheduleNudge(const Duration(milliseconds: 2200));
+            // No autoplay — pause if the page tries to start; user taps to play.
             if (_mode == 1) {
-              await _runJsSafe('''
-(function(){
+              await _runJsSafe(r'''(function(){
   try {
     var s=document.createElement('style');
     s.innerHTML='.m-navbar,.nav-bar,.international-header,.v-navbar,.open-app-btn,.openapp,.app-guide,.bili-header{display:none!important;} body{padding-top:0!important;}';
     document.documentElement.appendChild(s);
+    var v=document.querySelector('video');
+    if(v){ try{ v.pause(); }catch(e){} }
   } catch(e) {}
-})();
-''');
+})();''');
+            } else {
+              await _runJsSafe(r'''(function(){
+  try {
+    var v=document.querySelector('video');
+    if(v){ try{ v.pause(); v.autoplay=false; }catch(e){} }
+  } catch(e) {}
+})();''');
             }
           },
           onWebResourceError: (err) {
@@ -186,46 +192,11 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
     }
   }
 
-  void _scheduleNudge(Duration delay) {
-    final t = Timer(delay, () {
-      if (!_alive) return;
-      _nudgeAutoplay();
-    });
-    _nudgeTimers.add(t);
-  }
-
   Future<void> _runJsSafe(String js) async {
     if (!_alive) return;
     try {
       await _controller.runJavaScript(js);
     } catch (_) {}
-  }
-
-  Future<void> _nudgeAutoplay() async {
-    if (!_alive) return;
-    await _runJsSafe("""
-(function(){
-  try {
-    var v=document.querySelector('video');
-    if(v){
-      v.muted=true;
-      v.playsInline=true;
-      v.setAttribute('playsinline','');
-      v.setAttribute('webkit-playsinline','');
-      var p=v.play();
-      if(p&&p.catch) p.catch(function(){});
-      setTimeout(function(){ try{ v.muted=false; }catch(e){} }, 800);
-    }
-    var sels=['.bpx-player-ctrl-play','.player-mobile-btn-start',
-      '.bilibili-player-video-btn-start','.play-btn',
-      'button[aria-label*="播放"]','.bmpui-btn-play'];
-    for (var j=0;j<sels.length;j++){
-      var b=document.querySelector(sels[j]);
-      if(b){ b.click(); break; }
-    }
-  } catch(e) {}
-})();
-""");
   }
 
   Future<void> _loadCurrent() async {
@@ -260,10 +231,6 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
   @override
   void dispose() {
     _alive = false;
-    for (final t in _nudgeTimers) {
-      t.cancel();
-    }
-    _nudgeTimers.clear();
     // Tear down safely: stop media via JS, clear delegate, blank page.
     // Do not await — dispose must be sync; fire-and-forget with guards.
     unawaited(() async {
@@ -338,14 +305,17 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (_error == null)
-                    // Exclusive gestures → player (danmaku / fullscreen) never
-                    // fights Flutter dialog recognizers.
-                    WebViewWidget(
-                      controller: _controller,
-                      gestureRecognizers: _webGestures,
-                    )
-                  else
+                  // Keep WebView mounted to avoid recreate jank; overlay errors.
+                  Offstage(
+                    offstage: _error != null,
+                    child: RepaintBoundary(
+                      child: WebViewWidget(
+                        controller: _controller,
+                        gestureRecognizers: _webGestures,
+                      ),
+                    ),
+                  ),
+                  if (_error != null)
                     Center(
                       child: Padding(
                         padding: const EdgeInsets.all(24),
