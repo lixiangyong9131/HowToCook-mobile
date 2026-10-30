@@ -9,8 +9,8 @@ import '../theme/app_theme.dart';
 
 /// Zoomable full-process recipe card (9:16 AI infographic).
 ///
-/// Tap and committed 上滑 share one maximize route (slide-up morph).
-/// Fullscreen uses an opaque route + open-guard so dismiss sticks.
+/// Tap immediately maximizes; committed 上滑 shares the same route.
+/// Fullscreen: tap anywhere (near identity) dismisses / restores.
 class ProcessImageViewer extends StatefulWidget {
   final Future<ProcessImageBytes?> Function() loader;
   final String? remoteUrl;
@@ -106,7 +106,7 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
     } finally {
       _routeOpen = false;
       // Absorb the closing tap / residual fling so we don't immediately reopen.
-      _ignoreUntil = DateTime.now().add(const Duration(milliseconds: 550));
+      _ignoreUntil = DateTime.now().add(const Duration(milliseconds: 320));
       if (mounted) {
         _transform.value = Matrix4.identity();
       }
@@ -223,7 +223,7 @@ class _NetworkProcessImage extends StatelessWidget {
       width: double.infinity,
       filterQuality: FilterQuality.high,
       headers: const {
-        'User-Agent': 'HowToCook-mobile/0.6.13',
+        'User-Agent': 'HowToCook-mobile/0.6.17',
         'Accept': 'image/jpeg,image/*;q=0.8',
       },
       loadingBuilder: (context, child, progress) {
@@ -339,16 +339,15 @@ class _ZoomableImageState extends State<_ZoomableImage> {
                     final wasTap = start != null &&
                         t0 != null &&
                         _activePointers <= 1 &&
-                        move <= 28 &&
+                        move <= 36 &&
                         DateTime.now().difference(t0) <
-                            const Duration(milliseconds: 450);
+                            const Duration(milliseconds: 500);
                     _downPointer = null;
                     _downPos = null;
                     _downAt = null;
                     if (wasTap) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) _fireMaximize();
-                      });
+                      // Immediate maximize — no post-frame delay.
+                      _fireMaximize();
                     }
                   }
                   _activePointers = (_activePointers - 1).clamp(0, 10);
@@ -390,7 +389,7 @@ class _ZoomableImageState extends State<_ZoomableImage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
           child: Text(
-            '${ProcessImageService.attribution}\n上滑浏览 · 点按与上滑同效最大化 · 双指缩放',
+            '${ProcessImageService.attribution}\n点按立即全屏 · 上滑同效 · 双指缩放',
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: AppTheme.muted,
@@ -416,6 +415,11 @@ class _FullscreenProcessImage extends StatefulWidget {
 class _FullscreenProcessImageState extends State<_FullscreenProcessImage> {
   final _transform = TransformationController();
   bool _closing = false;
+  Offset? _downPos;
+  int? _downPointer;
+  DateTime? _downAt;
+  double _maxMove = 0;
+  int _activePointers = 0;
 
   @override
   void dispose() {
@@ -423,11 +427,68 @@ class _FullscreenProcessImageState extends State<_FullscreenProcessImage> {
     super.dispose();
   }
 
+  bool get _isNearIdentity =>
+      _transform.value.getMaxScaleOnAxis() < 1.25;
+
   void _close() {
     if (_closing) return;
     _closing = true;
     HapticFeedback.selectionClick();
     Navigator.of(context).maybePop();
+  }
+
+  void _onPointerDown(PointerDownEvent e) {
+    if (e.kind != ui.PointerDeviceKind.touch &&
+        e.kind != ui.PointerDeviceKind.mouse) {
+      return;
+    }
+    _activePointers++;
+    if (_activePointers > 1) {
+      _downPos = null;
+      _maxMove = 999;
+      return;
+    }
+    _downPointer = e.pointer;
+    _downPos = e.position;
+    _downAt = DateTime.now();
+    _maxMove = 0;
+  }
+
+  void _onPointerMove(PointerMoveEvent e) {
+    if (e.pointer != _downPointer || _downPos == null) return;
+    final d = (e.position - _downPos!).distance;
+    if (d > _maxMove) _maxMove = d;
+  }
+
+  void _onPointerUp(PointerUpEvent e) {
+    if (e.pointer == _downPointer) {
+      final start = _downPos;
+      final t0 = _downAt;
+      final move = _maxMove;
+      final wasTap = start != null &&
+          t0 != null &&
+          _activePointers <= 1 &&
+          move <= 36 &&
+          DateTime.now().difference(t0) < const Duration(milliseconds: 500);
+      _downPointer = null;
+      _downPos = null;
+      _downAt = null;
+      // Tap anywhere (when not zoomed) restores / dismisses fullscreen.
+      if (wasTap && _isNearIdentity) {
+        _close();
+      }
+    }
+    _activePointers = (_activePointers - 1).clamp(0, 10);
+  }
+
+  void _onPointerCancel(PointerCancelEvent e) {
+    if (e.pointer == _downPointer) {
+      _downPointer = null;
+      _downPos = null;
+      _downAt = null;
+      _maxMove = 999;
+    }
+    _activePointers = (_activePointers - 1).clamp(0, 10);
   }
 
   @override
@@ -440,20 +501,18 @@ class _FullscreenProcessImageState extends State<_FullscreenProcessImage> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Tap empty chrome / drag down to dismiss when near identity.
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onVerticalDragEnd: (d) {
-                final v = d.primaryVelocity ?? 0;
-                if (v > 600) _close();
-              },
+            Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: _onPointerDown,
+              onPointerMove: _onPointerMove,
+              onPointerUp: _onPointerUp,
+              onPointerCancel: _onPointerCancel,
               child: InteractiveViewer(
                 transformationController: _transform,
                 minScale: 0.5,
                 maxScale: 5,
                 onInteractionEnd: (details) {
-                  final scale = _transform.value.getMaxScaleOnAxis();
-                  if (scale > 1.2) return;
+                  if (!_isNearIdentity) return;
                   if (details.velocity.pixelsPerSecond.dy > 900) {
                     _close();
                   }
@@ -484,7 +543,7 @@ class _FullscreenProcessImageState extends State<_FullscreenProcessImage> {
               bottom: math.max(pad.bottom, 12) + 8,
               child: IgnorePointer(
                 child: Text(
-                  '双指缩放 · 下滑或点关闭',
+                  '点按任意处关闭 · 双指缩放 · 下滑关闭',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.7),
