@@ -654,17 +654,14 @@ class _SectionBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isSteps && section.items.isNotEmpty) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 8, bottom: 100),
-        child: SnapTimeline(
-          steps: section.items,
-          durationOf: extractStepDuration,
-          timerCompletedSteps: timerCompletedSteps,
-          onStartTimer: onStartStepTimer ??
-              (i, d) {
-                onPickTimer(d, i);
-              },
-        ),
+      return SnapTimeline(
+        steps: section.items,
+        durationOf: extractStepDuration,
+        timerCompletedSteps: timerCompletedSteps,
+        onStartTimer: onStartStepTimer ??
+            (i, d) {
+              onPickTimer(d, i);
+            },
       );
     }
 
