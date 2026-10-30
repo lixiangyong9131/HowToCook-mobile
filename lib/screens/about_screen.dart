@@ -285,11 +285,11 @@ class _AboutScreenState extends State<AboutScreen> {
             ),
             const SizedBox(height: 12),
             const _InfoCard(
-              title: '应用图标',
+              title: '图标致谢 Icons8',
               accent: AppTheme.coral,
               children: [
                 Text(
-                  '启动图标中的面条 / 厨师帽涂鸦来自 Icons8 Doodle 风格图标（icons8.com），按 Icons8 免费许可使用并致谢。',
+                  '分类与「必备原料和工具」行内图标采用 Icons8 Food Doodle 风格（icons8.com），按 Icons8 免费许可使用并致谢。启动图标为厨师帽 + 终端 mascot，奶油底。',
                 ),
                 SizedBox(height: 8),
                 SelectableText('https://icons8.com/icons/set/food--style-doodle'),
@@ -305,7 +305,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'v0.6.0：Icons8 食物涂鸦图标、底部栏铺满、配色去紫、原料用量合并、视频播放修复。',
+                  'v0.6.1：分类/原料 Icons8 涂鸦、恢复厨师帽终端 logo（奶油底）、浅色底栏、叠卡/磁吸时间轴/惯性滚轮/底栏圆形揭示。',
                 ),
               ],
             ),

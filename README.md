@@ -6,14 +6,16 @@
 
 ## 功能
 
-交互参考微信小程序 [LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)。**v0.6.0** 图标/配色/底栏/视频/原料用量：
+交互参考微信小程序 [LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)。**v0.6.1** 涂鸦图标 / logo / 动效：
 
 - **视频做法**：详情页入口，底部弹层展示 B 站搜索结果（封面/标题/UP/时长/播放量），一键「在 B 站打开」（优先 [eat.ryanuo.cc](https://eat.ryanuo.cc/) `/api/video-search`，失败回落官方搜索 API，再不行打开搜索页）
 - **整图做法**：有图时默认以 [king-jingxiang/HowToCook](https://github.com/king-jingxiang/HowToCook) 的 9:16 信息图替换步骤时间轴（`InteractiveViewer` 缩放）；按需从 GitHub Pages 下载并磁盘缓存，不打进 APK；原料仍保留（用量与原料同行合并）
-- **桌面图标**：Icons8 食物涂鸦（面条+厨师帽），奶油/珊瑚底，无紫色
+- **桌面图标**：厨师帽 + 终端 `>_` mascot，奶油底 `#FFF6EB`（自适应图标约 55–60%）
+- **分类 / 原料图标**：[Icons8 Food Doodle](https://icons8.com/icons/set/food--style-doodle) 涂鸦，分类芯片/叠卡/原料行均使用
 - **Logo / 主题**：深蓝 `#1A1F3A`、奶油底 `#FFF6EB`、珊瑚强调 `#FF8A65`、霓虹绿 `#39FF5A`（无紫色）
 - **首页**：搜索框 → 搜索历史 → 最近浏览；分类独立「分类浏览」叠卡页
-- **动效**：完成挤压打勾、原料进度环、叠卡展开、步骤磁吸、惯性计时、柔和圆形揭示
+- **动效**：叠卡展开（48px peek + 交错下推）、步骤磁吸后绘时间轴、时:分惯性滚轮（奶油/珊瑚胶囊）、底栏点击圆形揭示（~450ms）
+- **底栏**：浅色奶油底（非黑/海军实心），选中珊瑚/海军
 - **应用内更新**（Android）：「我的 → 检查更新」拉取 GitHub Releases APK
 - 收藏、离线 JSON 菜谱、搜索结果页均保留
 

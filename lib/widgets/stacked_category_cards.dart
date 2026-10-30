@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 
 import '../models/recipe.dart';
 import '../theme/app_theme.dart';
+import '../theme/doodle_icons.dart';
 
-/// Interaction 3 — overlapping stack that FANS OUT with spring (bold, obvious).
+/// Interaction 3 — Stack Fan (叠卡展开).
+/// Folded: cards stacked with ~48px peek; expand: staggered push-down.
 class StackedCategoryCards extends StatefulWidget {
   final List<CategoryInfo> categories;
   final Map<String, int> counts;
@@ -27,6 +29,11 @@ class StackedCategoryCards extends StatefulWidget {
 
 class _StackedCategoryCardsState extends State<StackedCategoryCards>
     with SingleTickerProviderStateMixin {
+  static const _peek = 48.0;
+  static const _cardH = 96.0;
+  static const _gap = 12.0;
+  static const _staggerMs = 40;
+
   late bool _expanded;
   late final AnimationController _ctrl;
 
@@ -36,16 +43,16 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     _expanded = widget.initiallyExpanded && !widget.autoFanOnMount;
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 780),
+      duration: Duration(
+        milliseconds: 420 + widget.categories.length * _staggerMs,
+      ),
       value: _expanded ? 1 : 0,
     );
     if (widget.autoFanOnMount) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
-        await Future<void>.delayed(const Duration(milliseconds: 280));
+        await Future<void>.delayed(const Duration(milliseconds: 240));
         if (!mounted) return;
-        HapticFeedback.mediumImpact();
-        setState(() => _expanded = true);
-        _ctrl.forward(from: 0);
+        _expand();
       });
     }
   }
@@ -56,24 +63,29 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     super.dispose();
   }
 
-  void _toggle() {
-    HapticFeedback.selectionClick();
-    setState(() => _expanded = !_expanded);
-    if (_expanded) {
-      _ctrl.forward();
-    } else {
-      _ctrl.reverse();
-    }
+  void _expand() {
+    if (_expanded) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _expanded = true);
+    _ctrl.forward(from: 0);
   }
+
+  void _collapse() {
+    if (!_expanded) return;
+    HapticFeedback.selectionClick();
+    setState(() => _expanded = false);
+    _ctrl.reverse();
+  }
+
+  void _toggle() => _expanded ? _collapse() : _expand();
 
   @override
   Widget build(BuildContext context) {
     final cats = widget.categories;
     final n = cats.length;
-    const cardH = 88.0;
-    const peek = 22.0;
-    final collapsedH = cardH + peek * (n.clamp(0, 5) - 1).clamp(0, 99);
-    final expandedH = n * (cardH + 12) - 12;
+    final peekN = n.clamp(0, 6);
+    final collapsedH = _cardH + _peek * (peekN - 1).clamp(0, 99);
+    final expandedH = n * (_cardH + _gap) - _gap;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -99,7 +111,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
               style: FilledButton.styleFrom(
                 backgroundColor: AppTheme.navy,
                 foregroundColor: AppTheme.neon,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(999),
                 ),
@@ -115,17 +128,14 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
         AnimatedBuilder(
           animation: _ctrl,
           builder: (context, _) {
-            final t = Curves.elasticOut.transform(_ctrl.value.clamp(0.0, 1.0));
-            // elasticOut can overshoot >1 — clamp height math
-            final tt = t.clamp(0.0, 1.15);
-            final height = collapsedH + (expandedH - collapsedH) * tt.clamp(0.0, 1.0);
+            final height =
+                collapsedH + (expandedH - collapsedH) * _ctrl.value;
             return SizedBox(
               height: height + 8,
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  for (var i = 0; i < n; i++)
-                    _buildCard(i, n, tt.clamp(0.0, 1.0), cardH, peek),
+                  for (var i = 0; i < n; i++) _buildCard(i, n),
                 ],
               ),
             );
@@ -135,83 +145,94 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     );
   }
 
-  Widget _buildCard(int i, int n, double t, double cardH, double peek) {
+  Widget _buildCard(int i, int n) {
     final cat = widget.categories[i];
     final color = categoryAccent(cat.id, i);
     final dark = isDarkCard(color);
     final fg = dark ? Colors.white : AppTheme.navy;
     final count = widget.counts[cat.id] ?? 0;
 
-    final stackTop = i * peek;
-    final listTop = i * (cardH + 12);
-    final top = stackTop + (listTop - stackTop) * t;
-    final dx = (1 - t) * (i % 2 == 0 ? -6.0 : 6.0);
-    final rot = (1 - t) * (i % 2 == 0 ? -0.03 : 0.03);
-    final scale = 1.0 - (1 - t) * (n - 1 - i).clamp(0, 4) * 0.02;
+    // Stagger: later cards lag by ~40ms each when expanding.
+    final start = (i * _staggerMs) / (_ctrl.duration?.inMilliseconds ?? 1);
+    final end = (start + 0.55).clamp(0.0, 1.0);
+    final local = Curves.easeOutCubic.transform(
+      ((_ctrl.value - start) / (end - start).clamp(0.001, 1.0)).clamp(0.0, 1.0),
+    );
+    // Spring-ish overshoot soft clamp
+    final t = Curves.easeOutBack.transform(local.clamp(0.0, 1.0)).clamp(0.0, 1.15);
+
+    final stackTop = i * _peek;
+    final listTop = i * (_cardH + _gap);
+    final top = stackTop + (listTop - stackTop) * t.clamp(0.0, 1.0);
+    final scale = 1.0 - (1 - t.clamp(0.0, 1.0)) * (n - 1 - i).clamp(0, 5) * 0.015;
+    final elev = 6.0 + (1 - t.clamp(0.0, 1.0)) * i * 1.2;
 
     return Positioned(
       top: top,
-      left: 0 + dx,
-      right: 0 - dx,
-      child: Transform.rotate(
-        angle: rot,
-        child: Transform.scale(
-          scale: scale,
-          alignment: Alignment.topCenter,
-          child: GestureDetector(
-            onTap: () {
-              if (!_expanded) {
-                _toggle();
-                return;
-              }
-              HapticFeedback.lightImpact();
-              widget.onOpen(cat);
-            },
-            child: Container(
-              height: cardH,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(AppTheme.radius),
-                border: color == Colors.white
-                    ? Border.all(color: AppTheme.purple.withValues(alpha: 0.2))
-                    : null,
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.35),
-                    blurRadius: 18,
-                    offset: Offset(0, 8 + (1 - t) * 4),
+      left: 0,
+      right: 0,
+      child: Transform.scale(
+        scale: scale,
+        alignment: Alignment.topCenter,
+        child: GestureDetector(
+          onTap: () {
+            if (!_expanded) {
+              _expand();
+              return;
+            }
+            HapticFeedback.lightImpact();
+            widget.onOpen(cat);
+          },
+          child: Container(
+            height: _cardH,
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(AppTheme.radius),
+              border: color == Colors.white
+                  ? Border.all(color: AppTheme.navy.withValues(alpha: 0.12))
+                  : null,
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.navy.withValues(alpha: 0.18 + i * 0.02),
+                  blurRadius: 14 + elev,
+                  offset: Offset(0, 6 + elev * 0.4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: dark ? 0.18 : 0.55),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Text(
-                    categoryEmojis[cat.id] ?? '📖',
-                    style: const TextStyle(fontSize: 32),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      cat.name,
-                      style: TextStyle(
-                        color: fg,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '$count',
+                  child: DoodleIcons.categoryIcon(cat.id, size: 40),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    cat.name,
                     style: TextStyle(
-                      color: fg.withValues(alpha: 0.9),
-                      fontSize: 32,
+                      color: fg,
+                      fontSize: 22,
                       fontWeight: FontWeight.w900,
-                      letterSpacing: -0.5,
                     ),
                   ),
-                ],
-              ),
+                ),
+                Text(
+                  '$count',
+                  style: TextStyle(
+                    color: fg.withValues(alpha: 0.9),
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ],
             ),
           ),
         ),

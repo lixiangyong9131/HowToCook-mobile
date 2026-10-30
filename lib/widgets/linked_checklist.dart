@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/doodle_icons.dart';
 
 /// Interaction 2 — big progress ring + rolling n/N + card tints green (bold).
 class LinkedChecklist extends StatefulWidget {
@@ -124,14 +125,20 @@ class _LinkedChecklistState extends State<LinkedChecklist>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.title,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.0,
-                        color: AppTheme.navy.withValues(alpha: 0.55),
-                      ),
+                    Row(
+                      children: [
+                        DoodleIcons.image(DoodleIcons.basket, size: 18),
+                        const SizedBox(width: 6),
+                        Text(
+                          widget.title,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 1.0,
+                            color: AppTheme.navy.withValues(alpha: 0.55),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     _RollingFraction(done: done, total: total),
@@ -261,7 +268,9 @@ class _CheckRow extends StatelessWidget {
                       ? const Icon(Icons.check, size: 18, color: AppTheme.navy)
                       : null,
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
+                DoodleIcons.ingredientIcon(text, size: 28),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     text.replaceAll(RegExp(r'!\[.*?\]\([^)]+\)'), '').trim(),

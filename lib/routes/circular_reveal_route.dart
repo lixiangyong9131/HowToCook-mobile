@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// Interaction 6 — circular clip reveal expanding from [center] (global).
-/// Slowed + softened to avoid harsh flash (晃眼).
+/// Used for page pushes AND bottom-tab content swaps.
 class CircularRevealRoute<T> extends PageRouteBuilder<T> {
   final Widget page;
   final Offset center;
@@ -16,25 +16,23 @@ class CircularRevealRoute<T> extends PageRouteBuilder<T> {
     super.settings,
   }) : super(
           pageBuilder: (context, animation, secondary) => page,
-          transitionDuration: const Duration(milliseconds: 820),
-          reverseTransitionDuration: const Duration(milliseconds: 560),
+          transitionDuration: const Duration(milliseconds: 450),
+          reverseTransitionDuration: const Duration(milliseconds: 360),
           opaque: false,
           barrierDismissible: false,
           transitionsBuilder: (context, animation, secondary, child) {
-            return _CircularReveal(
-              animation: CurvedAnimation(
+            return CircularReveal(
+              progress: CurvedAnimation(
                 parent: animation,
-                curve: Curves.easeOutCubic,
+                curve: const Cubic(0.4, 0.0, 0.2, 1.0),
                 reverseCurve: Curves.easeInCubic,
               ),
               center: center,
-              veilColor: veilColor ?? const Color(0xFF1A1F3A),
               child: child,
             );
           },
         );
 
-  /// Convenience: open [page] using the tap's global position.
   static Future<T?> open<T>(
     BuildContext context, {
     required Widget page,
@@ -56,55 +54,31 @@ class CircularRevealRoute<T> extends PageRouteBuilder<T> {
   }
 }
 
-class _CircularReveal extends StatelessWidget {
-  final Animation<double> animation;
+/// Clip child with a circle growing from [center] as [progress] goes 0→1.
+/// Spec: 0% → ~150% at tapped point, ~450ms, cubic-bezier(0.4,0,0.2,1).
+class CircularReveal extends StatelessWidget {
+  final Animation<double> progress;
   final Offset center;
-  final Color veilColor;
   final Widget child;
 
-  const _CircularReveal({
-    required this.animation,
+  const CircularReveal({
+    super.key,
+    required this.progress,
     required this.center,
-    required this.veilColor,
     required this.child,
   });
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: animation,
+      animation: progress,
       builder: (context, _) {
         final size = MediaQuery.sizeOf(context);
-        final maxR = _maxRadius(size, center);
-        final t = animation.value;
-        // Soft veil expands first; page follows with overlap + fade.
-        final veilT = Curves.easeOut.transform((t / 0.55).clamp(0.0, 1.0));
-        final pageT = Curves.easeOutCubic.transform(
-          ((t - 0.12) / 0.88).clamp(0.0, 1.0),
-        );
-        // Opacity ramp — never a harsh near-opaque flash.
-        final veilAlpha = (0.55 * (1.0 - pageT * 0.85)).clamp(0.0, 0.55);
-        final pageFade = Curves.easeOut.transform(
-          ((t - 0.08) / 0.55).clamp(0.0, 1.0),
-        );
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            if (veilAlpha > 0.02)
-              ClipPath(
-                clipper: _CircleClipper(center: center, radius: maxR * veilT),
-                child: ColoredBox(
-                  color: veilColor.withValues(alpha: veilAlpha),
-                ),
-              ),
-            ClipPath(
-              clipper: _CircleClipper(center: center, radius: maxR * pageT),
-              child: Opacity(
-                opacity: pageFade,
-                child: child,
-              ),
-            ),
-          ],
+        final maxR = _maxRadius(size, center) * 1.5; // ~150%
+        final t = progress.value.clamp(0.0, 1.0);
+        return ClipPath(
+          clipper: CircleRevealClipper(center: center, radius: maxR * t),
+          child: child,
         );
       },
     );
@@ -121,14 +95,14 @@ class _CircularReveal extends StatelessWidget {
     for (final p in corners) {
       m = math.max(m, (p - c).distance);
     }
-    return m + 24;
+    return m;
   }
 }
 
-class _CircleClipper extends CustomClipper<Path> {
+class CircleRevealClipper extends CustomClipper<Path> {
   final Offset center;
   final double radius;
-  _CircleClipper({required this.center, required this.radius});
+  CircleRevealClipper({required this.center, required this.radius});
 
   @override
   Path getClip(Size size) {
@@ -136,6 +110,6 @@ class _CircleClipper extends CustomClipper<Path> {
   }
 
   @override
-  bool shouldReclip(covariant _CircleClipper old) =>
+  bool shouldReclip(covariant CircleRevealClipper old) =>
       old.center != center || old.radius != radius;
 }

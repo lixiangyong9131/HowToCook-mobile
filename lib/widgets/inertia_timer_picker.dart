@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
 
-/// Interaction 5 — inertia wheel duration picker (min + sec).
+/// Interaction 5 — inertia wheel hour:minute picker (cream/coral capsule).
 Future<Duration?> showInertiaTimerPicker(
   BuildContext context, {
   Duration initial = const Duration(minutes: 5),
@@ -27,38 +27,37 @@ class InertiaTimerSheet extends StatefulWidget {
 }
 
 class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
+  late int _hour;
   late int _min;
-  late int _sec;
+  late FixedExtentScrollController _hourCtrl;
   late FixedExtentScrollController _minCtrl;
-  late FixedExtentScrollController _secCtrl;
 
   @override
   void initState() {
     super.initState();
-    _min = widget.initial.inMinutes.clamp(0, 180);
-    _sec = widget.initial.inSeconds.remainder(60);
-    // snap sec to 5s steps for nicer feel
-    _sec = (_sec ~/ 5) * 5;
+    final totalMin = widget.initial.inMinutes.clamp(0, 12 * 60);
+    _hour = totalMin ~/ 60;
+    _min = totalMin % 60;
+    _hourCtrl = FixedExtentScrollController(initialItem: _hour);
     _minCtrl = FixedExtentScrollController(initialItem: _min);
-    _secCtrl = FixedExtentScrollController(initialItem: _sec ~/ 5);
   }
 
   @override
   void dispose() {
+    _hourCtrl.dispose();
     _minCtrl.dispose();
-    _secCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final label =
-        '${_min.toString().padLeft(2, '0')}:${_sec.toString().padLeft(2, '0')}';
+        '${_hour.toString().padLeft(2, '0')}:${_min.toString().padLeft(2, '0')}';
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 24),
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
       decoration: BoxDecoration(
-        color: AppTheme.bg,
+        color: AppTheme.cream,
         borderRadius: BorderRadius.circular(AppTheme.radius),
         boxShadow: AppTheme.softShadow(opacity: 0.18),
       ),
@@ -75,7 +74,7 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
                 ),
                 const Spacer(),
                 Text(
-                  'SET A TIME',
+                  'HOUR : MINUTE',
                   style: TextStyle(
                     fontSize: 11,
                     letterSpacing: 1.4,
@@ -86,7 +85,7 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
               ],
             ),
             const Text(
-              '上下甩动滚轮选择时间',
+              '甩动滚轮选择时间（带惯性与回弹）',
               style: TextStyle(
                 color: AppTheme.muted,
                 fontWeight: FontWeight.w600,
@@ -101,6 +100,7 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
                 fontWeight: FontWeight.w900,
                 letterSpacing: -1.5,
                 height: 1,
+                color: AppTheme.navy,
               ),
             ),
             const SizedBox(height: 16),
@@ -113,17 +113,20 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  // Lavender selection capsule
+                  // Soft cream/coral highlight capsule (not purple)
                   Container(
-                    height: 44,
+                    height: 48,
                     margin: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
-                      color: AppTheme.lavender,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: AppTheme.purple, width: 2),
+                      color: AppTheme.softCoral.withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: AppTheme.coral.withValues(alpha: 0.65),
+                        width: 1.5,
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.purple.withValues(alpha: 0.25),
+                          color: AppTheme.coral.withValues(alpha: 0.18),
                           blurRadius: 12,
                         ),
                       ],
@@ -132,13 +135,13 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
                   Row(
                     children: [
                       Expanded(
-                        child: _Wheel(
-                          controller: _minCtrl,
-                          itemCount: 181,
+                        child: _InertiaWheel(
+                          controller: _hourCtrl,
+                          itemCount: 13, // 0..12 hours
                           labelBuilder: (i) => i.toString().padLeft(2, '0'),
                           onSelected: (i) {
                             HapticFeedback.selectionClick();
-                            setState(() => _min = i);
+                            setState(() => _hour = i);
                           },
                         ),
                       ),
@@ -147,28 +150,27 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
                         style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w900,
+                          color: AppTheme.navy,
                         ),
                       ),
                       Expanded(
-                        child: _Wheel(
-                          controller: _secCtrl,
-                          itemCount: 12, // 0,5,...,55
-                          labelBuilder: (i) =>
-                              (i * 5).toString().padLeft(2, '0'),
+                        child: _InertiaWheel(
+                          controller: _minCtrl,
+                          itemCount: 60,
+                          labelBuilder: (i) => i.toString().padLeft(2, '0'),
                           onSelected: (i) {
                             HapticFeedback.selectionClick();
-                            setState(() => _sec = i * 5);
+                            setState(() => _min = i);
                           },
                         ),
                       ),
                     ],
                   ),
-                  // top/bottom fade
                   IgnorePointer(
                     child: Column(
                       children: [
                         Container(
-                          height: 40,
+                          height: 48,
                           decoration: BoxDecoration(
                             borderRadius: const BorderRadius.vertical(
                               top: Radius.circular(AppTheme.radius),
@@ -185,7 +187,7 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
                         ),
                         const Spacer(),
                         Container(
-                          height: 40,
+                          height: 48,
                           decoration: BoxDecoration(
                             borderRadius: const BorderRadius.vertical(
                               bottom: Radius.circular(AppTheme.radius),
@@ -207,12 +209,16 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            Row(
+            const Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('分', style: TextStyle(color: AppTheme.muted, fontWeight: FontWeight.w600)),
-                const SizedBox(width: 80),
-                Text('秒', style: TextStyle(color: AppTheme.muted, fontWeight: FontWeight.w600)),
+                Text('时',
+                    style: TextStyle(
+                        color: AppTheme.muted, fontWeight: FontWeight.w600)),
+                SizedBox(width: 80),
+                Text('分',
+                    style: TextStyle(
+                        color: AppTheme.muted, fontWeight: FontWeight.w600)),
               ],
             ),
             const SizedBox(height: 18),
@@ -228,7 +234,7 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
                   ),
                 ),
                 onPressed: () {
-                  final d = Duration(minutes: _min, seconds: _sec);
+                  final d = Duration(hours: _hour, minutes: _min);
                   if (d.inSeconds <= 0) return;
                   Navigator.of(context).pop(d);
                 },
@@ -245,13 +251,13 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
   }
 }
 
-class _Wheel extends StatelessWidget {
+class _InertiaWheel extends StatelessWidget {
   final FixedExtentScrollController controller;
   final int itemCount;
   final String Function(int) labelBuilder;
   final ValueChanged<int> onSelected;
 
-  const _Wheel({
+  const _InertiaWheel({
     required this.controller,
     required this.itemCount,
     required this.labelBuilder,
@@ -262,24 +268,43 @@ class _Wheel extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListWheelScrollView.useDelegate(
       controller: controller,
-      itemExtent: 52,
-      perspective: 0.003,
-      diameterRatio: 1.35,
+      itemExtent: 48,
+      perspective: 0.0025,
+      diameterRatio: 1.4,
+      // Velocity + friction snap; rubber-band via BouncingScrollPhysics
       physics: const FixedExtentScrollPhysics(
-        parent: BouncingScrollPhysics(),
+        parent: BouncingScrollPhysics(
+          decelerationRate: ScrollDecelerationRate.normal,
+        ),
       ),
       onSelectedItemChanged: onSelected,
       childDelegate: ListWheelChildBuilderDelegate(
         childCount: itemCount,
         builder: (context, i) {
+          // Magnifier feel via ListWheel — center is naturally larger via perspective
           return Center(
-            child: Text(
-              labelBuilder(i),
-              style: const TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.ink,
-              ),
+            child: AnimatedBuilder(
+              animation: controller,
+              builder: (context, _) {
+                double selected = 0;
+                try {
+                  selected = controller.selectedItem.toDouble();
+                } catch (_) {}
+                final dist = (i - selected).abs();
+                final t = (1 - dist * 0.35).clamp(0.35, 1.0);
+                return Opacity(
+                  opacity: t,
+                  child: Text(
+                    labelBuilder(i),
+                    style: TextStyle(
+                      fontSize: 22 + 12 * t,
+                      fontWeight: dist < 0.5 ? FontWeight.w900 : FontWeight.w600,
+                      color: AppTheme.navy.withValues(alpha: 0.45 + 0.55 * t),
+                      height: 1,
+                    ),
+                  ),
+                );
+              },
             ),
           );
         },
@@ -288,7 +313,7 @@ class _Wheel extends StatelessWidget {
   }
 }
 
-/// Compact running timer bar (shown while countdown active).
+/// Compact running timer bar.
 class RunningTimerBar extends StatelessWidget {
   final Duration remaining;
   final Duration total;
@@ -317,7 +342,7 @@ class RunningTimerBar extends StatelessWidget {
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 88),
         padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
         decoration: BoxDecoration(
-          color: AppTheme.blackCard,
+          color: AppTheme.navy,
           borderRadius: BorderRadius.circular(22),
           boxShadow: AppTheme.softShadow(opacity: 0.25),
         ),
@@ -328,10 +353,10 @@ class RunningTimerBar extends StatelessWidget {
               height: 40,
               alignment: Alignment.center,
               decoration: const BoxDecoration(
-                color: AppTheme.lime,
+                color: AppTheme.neon,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.timer, color: AppTheme.ink, size: 20),
+              child: const Icon(Icons.timer, color: AppTheme.navy, size: 20),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -354,7 +379,7 @@ class RunningTimerBar extends StatelessWidget {
                     child: LinearProgressIndicator(
                       value: progress.clamp(0.0, 1.0),
                       minHeight: 5,
-                      color: AppTheme.lime,
+                      color: AppTheme.coral,
                       backgroundColor: Colors.white24,
                     ),
                   ),
@@ -372,7 +397,6 @@ class RunningTimerBar extends StatelessWidget {
   }
 }
 
-/// Helper to drive a countdown from a State that owns a Timer.
 mixin CountdownTimerMixin<T extends StatefulWidget> on State<T> {
   Timer? countdownTimer;
   Duration? remaining;

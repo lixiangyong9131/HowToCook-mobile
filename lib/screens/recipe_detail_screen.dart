@@ -7,6 +7,7 @@ import '../main.dart';
 import '../models/recipe.dart';
 import '../services/process_image_service.dart';
 import '../theme/app_theme.dart';
+import '../theme/doodle_icons.dart';
 import '../utils/recipe_parser.dart';
 import '../widgets/inertia_timer_picker.dart';
 import '../widgets/linked_checklist.dart';
@@ -268,15 +269,25 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                               color: color,
                               borderRadius: BorderRadius.circular(999),
                             ),
-                            child: Text(
-                              '${categoryEmojis[recipe.categoryId] ?? ''} ${recipe.categoryName}',
-                              style: TextStyle(
-                                color: isDarkCard(color)
-                                    ? Colors.white
-                                    : AppTheme.ink,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 12,
-                              ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                DoodleIcons.categoryIcon(
+                                  recipe.categoryId,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  recipe.categoryName,
+                                  style: TextStyle(
+                                    color: isDarkCard(color)
+                                        ? Colors.white
+                                        : AppTheme.ink,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(height: 12),

@@ -4,6 +4,7 @@ import '../models/recipe.dart';
 import '../routes/recipe_nav.dart';
 import '../services/recipe_repository.dart';
 import '../theme/app_theme.dart';
+import '../theme/doodle_icons.dart';
 import '../widgets/recipe_card.dart';
 
 class CategoryRecipesScreen extends StatelessWidget {
@@ -58,10 +59,7 @@ class CategoryRecipesScreen extends StatelessWidget {
                       color: accent,
                       borderRadius: BorderRadius.circular(18),
                     ),
-                    child: Text(
-                      categoryEmojis[category.id] ?? '📖',
-                      style: const TextStyle(fontSize: 28),
-                    ),
+                    child: DoodleIcons.categoryIcon(category.id, size: 36),
                   ),
                   const SizedBox(width: 14),
                   Expanded(

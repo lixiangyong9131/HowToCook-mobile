@@ -5,6 +5,7 @@ import '../routes/recipe_nav.dart';
 import '../services/history_store.dart';
 import '../services/recipe_repository.dart';
 import '../theme/app_theme.dart';
+import '../theme/doodle_icons.dart';
 import 'categories_screen.dart';
 import 'category_recipes_screen.dart';
 import 'search_screen.dart';
@@ -77,7 +78,7 @@ class HomeScreen extends StatelessWidget {
                             scrollDirection: Axis.horizontal,
                             children: [
                               _FilterChip(
-                                label: '📂 分类浏览',
+                                label: '分类浏览',
                                 filled: true,
                                 onTap: () {
                                   Navigator.of(context).push(
@@ -94,8 +95,11 @@ class HomeScreen extends StatelessWidget {
                                     (c) => Padding(
                                       padding: const EdgeInsets.only(right: 8),
                                       child: _FilterChip(
-                                        label:
-                                            '${categoryEmojis[c.id] ?? ''} ${c.name}',
+                                        label: c.name,
+                                        leading: DoodleIcons.categoryIcon(
+                                          c.id,
+                                          size: 20,
+                                        ),
                                         onTap: () {
                                           Navigator.of(context).push(
                                             MaterialPageRoute(
@@ -231,35 +235,46 @@ class _FilterChip extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
   final bool filled;
+  final Widget? leading;
   const _FilterChip({
     required this.label,
     required this.onTap,
     this.filled = false,
+    this.leading,
   });
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: filled ? AppTheme.purple : Colors.white,
+      color: filled ? AppTheme.coral : Colors.white,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
             border: filled
                 ? null
-                : Border.all(color: AppTheme.purple.withValues(alpha: 0.25)),
+                : Border.all(color: AppTheme.navy.withValues(alpha: 0.12)),
           ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: filled ? Colors.white : AppTheme.navy,
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (leading != null) ...[
+                leading!,
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: filled ? Colors.white : AppTheme.navy,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -444,7 +459,6 @@ class _BrowseRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final emoji = categoryEmojis[entry.categoryId] ?? '📖';
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(AppTheme.radius),
@@ -478,7 +492,7 @@ class _BrowseRow extends StatelessWidget {
                   color: AppTheme.lilac,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                child: DoodleIcons.categoryIcon(entry.categoryId, size: 30),
               ),
               const SizedBox(width: 12),
               Expanded(
