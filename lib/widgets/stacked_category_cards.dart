@@ -8,10 +8,10 @@ import '../theme/doodle_icons.dart';
 
 /// Apple Wallet–style **stacked overlapping** category pile (not a PageView).
 ///
-/// Folded: continuous free-scroll through the pile. Finger drag tracks 1:1;
-/// release coasts with friction (延迟滑动), then springs/folds to nearest
-/// card. Cards scrolled past rise into an **upper** peek pile; remaining
-/// cards stay in the lower peek stack. Tap front to open.
+/// Folded: continuous free-scroll through the pile (**infinite loop** —
+/// past the last card wraps to the first). Finger drag tracks 1:1; release
+/// coasts with soft friction then springs to nearest card. Passed cards
+/// rise into an upper peek pile. Tap front to open.
 /// Expanded: fan-out list with the same AnimationController as collapse.
 class StackedCategoryCards extends StatefulWidget {
   final List<CategoryInfo> categories;
@@ -47,14 +47,14 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   static const _gap = 12.0;
   static const _visibleBehind = 3;
   static const _visibleAbove = 3;
-  /// Finger pixels per one card of [offset].
-  static const _pxPerCard = 78.0;
+  /// Finger pixels per one card of [offset] (higher = silkier / less twitchy).
+  static const _pxPerCard = 92.0;
 
   late bool _expanded;
   late final AnimationController _fanCtrl;
   late final AnimationController _coastCtrl;
 
-  /// Continuous deck position in `[0, n-1]`. Integer = folded on that card.
+  /// Continuous deck position (unbounded; wraps mod n). Integer = front card.
   double _offset = 0;
   int _lastSettled = 0;
   bool _dragging = false;
@@ -93,12 +93,14 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
 
   void _onCoastTick() {
     if (!mounted || _dragging) return;
-    setState(() => _offset = _coastCtrl.value.clamp(0.0, _maxOffset));
+    setState(() => _offset = _coastCtrl.value);
   }
 
   void _onCoastStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed || !mounted) return;
-    final settled = _offset.round().clamp(0, (_n - 1).clamp(0, 9999));
+    if (_n < 1) return;
+    // Snap + normalize into [0, n) so offset stays bounded after wrap coasts.
+    final settled = _modIndex(_offset.round());
     setState(() {
       _offset = settled.toDouble();
       _coastCtrl.value = _offset;
@@ -106,7 +108,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     if (settled != _lastSettled) {
       _lastSettled = settled;
       HapticFeedback.selectionClick();
-      if (widget.openOnSwipeSettle && _n > 0) {
+      if (widget.openOnSwipeSettle) {
         widget.onOpen(widget.categories[settled]);
       }
     }
@@ -130,7 +132,21 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   void _toggle() => _expanded ? _collapse() : _expand();
 
   int get _n => widget.categories.length;
-  double get _maxOffset => (_n - 1).clamp(0, 9999).toDouble();
+
+  int _modIndex(int i) {
+    final n = _n;
+    if (n <= 0) return 0;
+    return (i % n + n) % n;
+  }
+
+  /// Shortest signed distance from focus [_offset] to card [index] on a ring.
+  double _circularRel(int index) {
+    final n = _n;
+    if (n <= 0) return 0;
+    var rel = index - _offset;
+    rel -= n * (rel / n).round();
+    return rel;
+  }
 
   int _paletteIndex(CategoryInfo cat) {
     final i = widget.categories.indexWhere((c) => c.id == cat.id);
@@ -145,9 +161,10 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
 
   void _onVerticalDragUpdate(DragUpdateDetails d) {
     if (_expanded || !_dragging) return;
-    // Finger up (negative dy) → advance through deck (offset ↑).
+    // Finger up (negative dy) → advance through deck (offset ↑). No clamp —
+    // infinite loop lets offset run past ends and wrap visually.
     setState(() {
-      _offset = (_offset - d.delta.dy / _pxPerCard).clamp(0.0, _maxOffset);
+      _offset = _offset - d.delta.dy / _pxPerCard;
     });
   }
 
@@ -167,26 +184,25 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   }
 
   /// Friction coast toward a predicted stop, then soft spring-fold to nearest.
+  /// Target may lie outside `[0, n)` — visuals wrap; we normalize on settle.
   void _startCoast(double velocity) {
     if (_n < 2) {
       setState(() => _offset = 0);
       return;
     }
-    // Ballistic end under light friction → "延迟滑动".
-    final friction = FrictionSimulation(0.085, _offset, velocity);
+    // Light friction → silky 延迟滑动; no end clamps (infinite loop).
+    final friction = FrictionSimulation(0.055, _offset, velocity);
     var predicted = friction.x(double.infinity);
     if (predicted.isNaN || predicted.isInfinite) {
-      predicted = _offset + velocity * 0.35;
+      predicted = _offset + velocity * 0.45;
     }
-    predicted = predicted.clamp(0.0, _maxOffset);
-    // Free-scroll feel: snap to nearest integer after coast prediction.
-    final target = predicted.round().toDouble().clamp(0.0, _maxOffset);
+    final target = predicted.round().toDouble();
 
-    // Soft spring = lingering coast then fold. Stiffness low → 延迟.
+    // Softer spring = longer, smoother card morph between indices.
     final spring = SpringDescription(
-      mass: 1,
-      stiffness: 70,
-      damping: 14,
+      mass: 1.05,
+      stiffness: 42,
+      damping: 14.5,
     );
     final sim = SpringSimulation(spring, _offset, target, velocity);
     _coastCtrl.animateWith(sim);
@@ -247,8 +263,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
         if (!_expanded)
           Text(
             widget.openOnSwipeSettle
-                ? '甩动叠卡可跨多张 · 过渡动画后停稳打开 · 点按打开当前'
-                : '甩动叠卡可跨多张 · 卡片过渡后停稳 · 点按打开',
+                ? '循环甩动叠卡 · 丝滑过渡后停稳打开 · 点按打开当前'
+                : '循环甩动叠卡 · 丝滑过渡后停稳 · 点按打开',
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -321,8 +337,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     // Draw far cards first so nearer ones paint on top.
     final indices = List<int>.generate(n, (i) => i);
     indices.sort((a, b) {
-      final da = (a - _offset).abs();
-      final db = (b - _offset).abs();
+      final da = _circularRel(a).abs();
+      final db = _circularRel(b).abs();
       final c = db.compareTo(da);
       return c != 0 ? c : a.compareTo(b);
     });
@@ -346,15 +362,16 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   Widget _buildWalletCard(int index, int n, double focusOrigin) {
     final cat = widget.categories[index];
     final paletteI = _paletteIndex(cat);
-    final rel = index - _offset; // <0 passed/upper, 0 focus, >0 lower
+    final rel = _circularRel(index); // <0 passed/upper, 0 focus, >0 lower
 
-    // Soft edge fade instead of hard cull — mid-scroll frames stay smooth.
-    if (rel < -(_visibleAbove + 1.0) || rel > (_visibleBehind + 1.0)) {
+    // Soft edge fade — mid-scroll frames stay smooth (ring-aware).
+    if (rel < -(_visibleAbove + 1.15) || rel > (_visibleBehind + 1.15)) {
       return const SizedBox.shrink();
     }
 
     final depthUp = (-rel).clamp(0.0, _visibleAbove + 0.8);
     final depthDown = rel.clamp(0.0, _visibleBehind + 0.8);
+    // Smoother easing for silkier morph between stacked slots.
     final upT = Curves.easeInOutCubic.transform(
       (depthUp / (_visibleAbove + 0.8)).clamp(0.0, 1.0),
     );
@@ -382,16 +399,16 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
       elev = 10.0 * (1.0 - downT);
     }
 
-    // Front card lifts while between integers (visible card morph).
+    // Front card eases between slots (visible card morph, less twitchy).
     final frac = (rel.abs() < 1) ? (1.0 - rel.abs()) : 0.0;
-    final lift = Curves.easeOut.transform(frac.clamp(0.0, 1.0));
-    final dragLift = _dragging ? 1.0 : 0.55;
-    scale += 0.045 * lift * dragLift;
-    top -= 10.0 * lift * dragLift;
-    elev += 14.0 * lift;
+    final lift = Curves.easeInOutCubic.transform(frac.clamp(0.0, 1.0));
+    final dragLift = _dragging ? 1.0 : 0.7;
+    scale += 0.03 * lift * dragLift;
+    top -= 8.0 * lift * dragLift;
+    elev += 12.0 * lift;
 
     final isFront = rel.abs() < 0.5;
-    final tilt = (rel <= 0 ? -upT : downT) * 0.06;
+    final tilt = (rel <= 0 ? -upT : downT) * 0.035;
 
     return Positioned(
       top: top,
