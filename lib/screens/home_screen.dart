@@ -54,15 +54,6 @@ class HomeScreen extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            _CatChip(
-                              onTap: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => const CategoriesScreen(),
-                                  ),
-                                );
-                              },
-                            ),
                           ],
                         ),
                         const SizedBox(height: 18),
@@ -203,33 +194,6 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class _CatChip extends StatelessWidget {
-  final VoidCallback onTap;
-  const _CatChip({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppTheme.navy,
-      borderRadius: BorderRadius.circular(999),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: onTap,
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          child: Text(
-            '分类',
-            style: TextStyle(
-              color: AppTheme.neon,
-              fontWeight: FontWeight.w800,
-              fontSize: 13,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _FilterChip extends StatelessWidget {
   final String label;
@@ -307,7 +271,7 @@ class _SearchPillState extends State<_SearchPill> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(999),
         boxShadow: AppTheme.softShadow(opacity: 0.10),
-        border: Border.all(color: AppTheme.purple.withValues(alpha: 0.18)),
+        border: Border.all(color: AppTheme.coral.withValues(alpha: 0.35)),
       ),
       child: Row(
         children: [
@@ -334,14 +298,14 @@ class _SearchPillState extends State<_SearchPill> {
                 border: InputBorder.none,
                 contentPadding:
                     EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                prefixIcon: Icon(Icons.search_rounded, color: AppTheme.purple),
+                prefixIcon: Icon(Icons.search_rounded, color: AppTheme.coral),
               ),
             ),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: Material(
-              color: AppTheme.neon,
+              color: AppTheme.coral,
               borderRadius: BorderRadius.circular(999),
               child: InkWell(
                 borderRadius: BorderRadius.circular(999),
@@ -358,7 +322,7 @@ class _SearchPillState extends State<_SearchPill> {
                   child: Text(
                     '搜索',
                     style: TextStyle(
-                      color: AppTheme.navy,
+                      color: AppTheme.cream,
                       fontWeight: FontWeight.w900,
                     ),
                   ),

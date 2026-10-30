@@ -161,7 +161,7 @@ class _AboutScreenState extends State<AboutScreen> {
             Container(
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
-                color: AppTheme.navy,
+                color: AppTheme.coral,
                 borderRadius: BorderRadius.circular(AppTheme.radius),
                 boxShadow: AppTheme.softShadow(opacity: 0.2),
               ),
@@ -244,69 +244,10 @@ class _AboutScreenState extends State<AboutScreen> {
             ),
             const SizedBox(height: 14),
             _InfoCard(
-              title: '菜谱来源与致谢',
+              title: '离线菜谱',
               accent: AppTheme.neon,
               children: [
-                Text(db?.attribution ??
-                    '菜谱内容来自 Anduin2017/HowToCook，致谢原作者与贡献者。'),
-                const SizedBox(height: 8),
-                const SelectableText(
-                    'https://github.com/Anduin2017/HowToCook'),
-                const SizedBox(height: 6),
-                Text('许可：${db?.license ?? 'Unlicense'}（公共领域）'),
-                const SizedBox(height: 8),
-                Text(
-                    '共 ${db?.recipes.length ?? 0} 道菜已打包进 App，可完全离线浏览。'),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const _InfoCard(
-              title: '整图做法来源',
-              accent: AppTheme.navy,
-              children: [
-                Text(
-                  '部分菜品「整图做法」来自 king-jingxiang/HowToCook（AI 信息图），按需下载缓存，不打包进 APK。',
-                ),
-                SizedBox(height: 8),
-                SelectableText(
-                  'https://github.com/king-jingxiang/HowToCook',
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const _InfoCard(
-              title: '视频做法',
-              accent: AppTheme.coral,
-              children: [
-                Text(
-                  '「视频做法」搜索 B 站相关教程（优先 eat.ryanuo.cc 接口，失败则官方搜索 API，再不行打开 B 站搜索页）。',
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const _InfoCard(
-              title: '图标致谢 Icons8',
-              accent: AppTheme.coral,
-              children: [
-                Text(
-                  '分类与「必备原料和工具」行内图标采用 Icons8 Food Doodle 风格（icons8.com），按 Icons8 免费许可使用并致谢。启动图标为厨师帽 + 终端 mascot，奶油底。',
-                ),
-                SizedBox(height: 8),
-                SelectableText('https://icons8.com/icons/set/food--style-doodle'),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const _InfoCard(
-              title: '本仓库',
-              accent: AppTheme.coral,
-              children: [
-                SelectableText(
-                  'https://github.com/lixiangyong9131/HowToCook-mobile',
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'v0.6.1：分类/原料 Icons8 涂鸦、恢复厨师帽终端 logo（奶油底）、浅色底栏、叠卡/磁吸时间轴/惯性滚轮/底栏圆形揭示。',
-                ),
+                Text('共 ${db?.recipes.length ?? 0} 道菜已打包进 App，可完全离线浏览。'),
               ],
             ),
           ],

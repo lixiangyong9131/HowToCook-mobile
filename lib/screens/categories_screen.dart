@@ -103,7 +103,7 @@ class _CategoriesScreenState extends State<CategoriesScreen> {
             const Padding(
               padding: EdgeInsets.fromLTRB(22, 4, 22, 8),
               child: Text(
-                '叠卡会自动展开 — 点卡片进入该类菜谱',
+                'Wallet 叠卡：上滑切换 · 点按进入 · 也可展开全部',
                 style: TextStyle(
                   color: AppTheme.muted,
                   fontWeight: FontWeight.w600,

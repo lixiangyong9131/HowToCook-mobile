@@ -5,8 +5,9 @@ import '../models/recipe.dart';
 import '../theme/app_theme.dart';
 import '../theme/doodle_icons.dart';
 
-/// Interaction 3 — Stack Fan (叠卡展开).
-/// Folded: cards stacked with ~48px peek; expand: staggered push-down.
+/// Apple Wallet–style category pass stack.
+/// Swipe the front card up to cycle (peek next); tap to open.
+/// Optional expand fans the whole stack for browsing.
 class StackedCategoryCards extends StatefulWidget {
   final List<CategoryInfo> categories;
   final Map<String, int> counts;
@@ -28,25 +29,36 @@ class StackedCategoryCards extends StatefulWidget {
 }
 
 class _StackedCategoryCardsState extends State<StackedCategoryCards>
-    with SingleTickerProviderStateMixin {
-  static const _peek = 48.0;
-  static const _cardH = 96.0;
+    with TickerProviderStateMixin {
+  static const _peek = 28.0;
+  static const _cardH = 104.0;
   static const _gap = 12.0;
-  static const _staggerMs = 40;
+  static const _visibleBehind = 3;
+  static const _swipeThreshold = 72.0;
 
   late bool _expanded;
-  late final AnimationController _ctrl;
+  late final AnimationController _fanCtrl;
+  late final AnimationController _swipeCtrl;
+
+  /// Index in [categories] that is currently the front (top) card.
+  int _front = 0;
+  double _dragDy = 0;
+  bool _cycling = false;
 
   @override
   void initState() {
     super.initState();
     _expanded = widget.initiallyExpanded && !widget.autoFanOnMount;
-    _ctrl = AnimationController(
+    _fanCtrl = AnimationController(
       vsync: this,
       duration: Duration(
-        milliseconds: 420 + widget.categories.length * _staggerMs,
+        milliseconds: 420 + widget.categories.length * 40,
       ),
       value: _expanded ? 1 : 0,
+    );
+    _swipeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
     );
     if (widget.autoFanOnMount) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -59,7 +71,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _fanCtrl.dispose();
+    _swipeCtrl.dispose();
     super.dispose();
   }
 
@@ -67,24 +80,76 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     if (_expanded) return;
     HapticFeedback.mediumImpact();
     setState(() => _expanded = true);
-    _ctrl.forward(from: 0);
+    _fanCtrl.forward(from: 0);
   }
 
   void _collapse() {
     if (!_expanded) return;
     HapticFeedback.selectionClick();
     setState(() => _expanded = false);
-    _ctrl.reverse();
+    _fanCtrl.reverse();
   }
 
   void _toggle() => _expanded ? _collapse() : _expand();
+
+  int get _n => widget.categories.length;
+
+  CategoryInfo _atStackDepth(int depth) {
+    // depth 0 = front, 1 = next, …
+    final i = (_front + depth) % _n;
+    return widget.categories[i];
+  }
+
+  int _paletteIndex(CategoryInfo cat) {
+    final i = widget.categories.indexWhere((c) => c.id == cat.id);
+    return i < 0 ? 0 : i;
+  }
+
+  Future<void> _cycleFront() async {
+    if (_cycling || _n < 2) return;
+    _cycling = true;
+    HapticFeedback.lightImpact();
+    _swipeCtrl.value = 0;
+    await _swipeCtrl.animateTo(
+      1,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeInCubic,
+    );
+    if (!mounted) return;
+    setState(() {
+      _front = (_front + 1) % _n;
+      _dragDy = 0;
+      _cycling = false;
+      _swipeCtrl.value = 0;
+    });
+  }
+
+  void _onVerticalDragUpdate(DragUpdateDetails d) {
+    if (_expanded || _cycling) return;
+    setState(() {
+      // Only allow upward drag (negative dy in Flutter? actually dy positive = down)
+      _dragDy = (_dragDy + d.delta.dy).clamp(-180.0, 40.0);
+    });
+  }
+
+  void _onVerticalDragEnd(DragEndDetails d) async {
+    if (_expanded || _cycling) return;
+    final v = d.primaryVelocity ?? 0;
+    if (_dragDy < -_swipeThreshold || v < -700) {
+      await _cycleFront();
+    } else {
+      setState(() => _dragDy = 0);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final cats = widget.categories;
     final n = cats.length;
-    final peekN = n.clamp(0, 6);
-    final collapsedH = _cardH + _peek * (peekN - 1).clamp(0, 99);
+    if (n == 0) return const SizedBox.shrink();
+
+    final peekN = n.clamp(0, _visibleBehind + 1);
+    final collapsedH = _cardH + _peek * (peekN - 1).clamp(0, 99) + 24;
     final expandedH = n * (_cardH + _gap) - _gap;
 
     return Column(
@@ -110,7 +175,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
               onPressed: _toggle,
               style: FilledButton.styleFrom(
                 backgroundColor: AppTheme.navy,
-                foregroundColor: AppTheme.neon,
+                foregroundColor: AppTheme.cream,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 shape: RoundedRectangleBorder(
@@ -124,20 +189,25 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 6),
+        if (!_expanded)
+          const Text(
+            '上滑切换下一张 · 点按打开',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.muted,
+            ),
+          ),
+        const SizedBox(height: 10),
         AnimatedBuilder(
-          animation: _ctrl,
+          animation: Listenable.merge([_fanCtrl, _swipeCtrl]),
           builder: (context, _) {
             final height =
-                collapsedH + (expandedH - collapsedH) * _ctrl.value;
+                collapsedH + (expandedH - collapsedH) * _fanCtrl.value;
             return SizedBox(
               height: height + 8,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  for (var i = 0; i < n; i++) _buildCard(i, n),
-                ],
-              ),
+              child: _expanded ? _buildExpanded(n) : _buildWallet(n),
             );
           },
         ),
@@ -145,27 +215,30 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     );
   }
 
-  Widget _buildCard(int i, int n) {
-    final cat = widget.categories[i];
-    final color = categoryAccent(cat.id, i);
-    final dark = isDarkCard(color);
-    final fg = dark ? Colors.white : AppTheme.navy;
-    final count = widget.counts[cat.id] ?? 0;
+  Widget _buildExpanded(int n) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        for (var i = 0; i < n; i++) _buildFanCard(i, n),
+      ],
+    );
+  }
 
-    // Stagger: later cards lag by ~40ms each when expanding.
-    final start = (i * _staggerMs) / (_ctrl.duration?.inMilliseconds ?? 1);
+  Widget _buildFanCard(int i, int n) {
+    final cat = widget.categories[i];
+    final start = (i * 40) / (_fanCtrl.duration?.inMilliseconds ?? 1);
     final end = (start + 0.55).clamp(0.0, 1.0);
     final local = Curves.easeOutCubic.transform(
-      ((_ctrl.value - start) / (end - start).clamp(0.001, 1.0)).clamp(0.0, 1.0),
+      ((_fanCtrl.value - start) / (end - start).clamp(0.001, 1.0))
+          .clamp(0.0, 1.0),
     );
-    // Spring-ish overshoot soft clamp
-    final t = Curves.easeOutBack.transform(local.clamp(0.0, 1.0)).clamp(0.0, 1.15);
-
+    final t =
+        Curves.easeOutBack.transform(local.clamp(0.0, 1.0)).clamp(0.0, 1.15);
     final stackTop = i * _peek;
     final listTop = i * (_cardH + _gap);
     final top = stackTop + (listTop - stackTop) * t.clamp(0.0, 1.0);
-    final scale = 1.0 - (1 - t.clamp(0.0, 1.0)) * (n - 1 - i).clamp(0, 5) * 0.015;
-    final elev = 6.0 + (1 - t.clamp(0.0, 1.0)) * i * 1.2;
+    final scale =
+        1.0 - (1 - t.clamp(0.0, 1.0)) * (n - 1 - i).clamp(0, 5) * 0.015;
 
     return Positioned(
       top: top,
@@ -176,66 +249,134 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
         alignment: Alignment.topCenter,
         child: GestureDetector(
           onTap: () {
-            if (!_expanded) {
-              _expand();
-              return;
-            }
             HapticFeedback.lightImpact();
             widget.onOpen(cat);
           },
-          child: Container(
-            height: _cardH,
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(AppTheme.radius),
-              border: color == Colors.white
-                  ? Border.all(color: AppTheme.navy.withValues(alpha: 0.12))
-                  : null,
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.navy.withValues(alpha: 0.18 + i * 0.02),
-                  blurRadius: 14 + elev,
-                  offset: Offset(0, 6 + elev * 0.4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: dark ? 0.18 : 0.55),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: DoodleIcons.categoryIcon(cat.id, size: 40),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    cat.name,
-                    style: TextStyle(
-                      color: fg,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                Text(
-                  '$count',
-                  style: TextStyle(
-                    color: fg.withValues(alpha: 0.9),
-                    fontSize: 32,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-              ],
-            ),
+          child: _cardBody(cat, i),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWallet(int n) {
+    final exitT = _swipeCtrl.value;
+    final drag = _dragDy + (-140.0 * exitT);
+    final depths = List.generate(
+      n.clamp(0, _visibleBehind + 1),
+      (d) => d,
+    ).reversed.toList(); // draw back first
+
+    return GestureDetector(
+      onVerticalDragUpdate: _onVerticalDragUpdate,
+      onVerticalDragEnd: _onVerticalDragEnd,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.topCenter,
+        children: [
+          for (final depth in depths) _buildWalletCard(depth, n, drag),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWalletCard(int depth, int n, double drag) {
+    final cat = _atStackDepth(depth);
+    final paletteI = _paletteIndex(cat);
+    final isFront = depth == 0;
+
+    // Behind cards sit lower with scale-down (Wallet peek).
+    final baseTop = depth * _peek;
+    final scale = 1.0 - depth * 0.035;
+    final lift = isFront ? drag : (drag < 0 ? (-drag / 180) * depth * 4 : 0.0);
+    // As front leaves, next cards rise toward front position.
+    final promote = isFront
+        ? 0.0
+        : Curves.easeOut.transform(
+            ((-drag.clamp(-180.0, 0.0)) / 180.0).clamp(0.0, 1.0),
+          );
+    final top = baseTop * (1 - promote) + lift;
+    final thisScale = scale + (1 - scale) * promote;
+
+    return Positioned(
+      top: top,
+      left: 8.0 * depth * (1 - promote),
+      right: 8.0 * depth * (1 - promote),
+      child: Opacity(
+        opacity: isFront
+            ? (1.0 - (-drag.clamp(-180.0, 0.0) / 220.0).clamp(0.0, 0.35))
+            : 1,
+        child: Transform.scale(
+          scale: thisScale,
+          alignment: Alignment.topCenter,
+          child: GestureDetector(
+            onTap: () {
+              if (!isFront) return;
+              HapticFeedback.lightImpact();
+              widget.onOpen(cat);
+            },
+            child: _cardBody(cat, paletteI),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _cardBody(CategoryInfo cat, int paletteIndex) {
+    final color = categoryAccent(cat.id, paletteIndex);
+    final dark = isDarkCard(color);
+    final fg = dark ? Colors.white : AppTheme.navy;
+    final count = widget.counts[cat.id] ?? 0;
+
+    return Container(
+      height: _cardH,
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+        border: color == Colors.white
+            ? Border.all(color: AppTheme.navy.withValues(alpha: 0.12))
+            : null,
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.navy.withValues(alpha: 0.18),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: dark ? 0.18 : 0.55),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: DoodleIcons.categoryIcon(cat.id, size: 40),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              cat.name,
+              style: TextStyle(
+                color: fg,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          Text(
+            '$count',
+            style: TextStyle(
+              color: fg.withValues(alpha: 0.9),
+              fontSize: 32,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.5,
+            ),
+          ),
+        ],
       ),
     );
   }

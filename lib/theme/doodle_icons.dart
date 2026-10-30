@@ -27,78 +27,279 @@ class DoodleIcons {
 
   static String forCategory(String id) => category[id] ?? fallback;
 
-  /// Heuristic map from 原料/工具 Chinese text → doodle asset.
-  static String forIngredient(String raw) {
-    final t = raw
+  /// Strip markdown / amounts / units so keyword matching sees the ingredient name.
+  static String normalizeIngredient(String raw) {
+    return raw
         .replaceAll(RegExp(r'!\[.*?\]\([^)]+\)'), '')
+        .replaceAll(RegExp(r'\[[^\]]*\]\([^)]*\)'), '')
+        .replaceAll(RegExp(r'[（(].*?[）)]'), '')
         .replaceAll(RegExp(r'\d+(\.\d+)?'), '')
-        .replaceAll(RegExp(r'[g克毫升mlML升个只条片块勺茶匙汤匙适量]'), '')
+        .replaceAll(
+          RegExp(r'(克|毫升|升|个|只|条|片|块|根|瓣|颗|粒|勺|茶匙|汤匙|适量|kg|ml|ML|g|l|L)'),
+          '',
+        )
+        .replaceAll(RegExp(r'[^\u4e00-\u9fffA-Za-z]'), '')
         .trim()
         .toLowerCase();
+  }
 
-    bool has(String s) => t.contains(s);
+  /// Keyword → asset. Longer matches win so 牛奶≠steak, 面粉≠noodles, 黑胡椒≠chili.
+  static const Map<String, String> keywordAssets = {
+    // Dairy / fats (before 牛 / 油)
+    '淡奶油': '$dir/mayonnaise.png',
+    '鲜奶油': '$dir/mayonnaise.png',
+    '奶油': '$dir/mayonnaise.png',
+    '黄油': '$dir/cheese.png',
+    '奶油芝士': '$dir/cheese.png',
+    '奶酪': '$dir/cheese.png',
+    '芝士': '$dir/cheese.png',
+    '干酪': '$dir/cheese.png',
+    '炼乳': '$dir/milk-bottle.png',
+    '酸奶': '$dir/milk-bottle.png',
+    '牛奶': '$dir/milk-bottle.png',
+    '羊奶': '$dir/milk-bottle.png',
+    '椰浆': '$dir/milk-bottle.png',
+    '椰奶': '$dir/milk-bottle.png',
+    '豆奶': '$dir/milk-bottle.png',
+    '豆浆': '$dir/milk-bottle.png',
+    '纯奶': '$dir/milk-bottle.png',
+    '全脂奶': '$dir/milk-bottle.png',
+    '脱脂奶': '$dir/milk-bottle.png',
+    '乳清': '$dir/milk-bottle.png',
+    // Flours / starches (before 面 → noodles)
+    '低筋面粉': '$dir/wheat.png',
+    '高筋面粉': '$dir/wheat.png',
+    '中筋面粉': '$dir/wheat.png',
+    '小麦粉': '$dir/wheat.png',
+    '面粉': '$dir/wheat.png',
+    '生粉': '$dir/wheat.png',
+    '淀粉': '$dir/wheat.png',
+    '玉米淀粉': '$dir/wheat.png',
+    '土豆淀粉': '$dir/wheat.png',
+    '澄粉': '$dir/wheat.png',
+    '糯米粉': '$dir/wheat.png',
+    '粘米粉': '$dir/wheat.png',
+    '玉米粉': '$dir/corn.png',
+    '面包糠': '$dir/bread.png',
+    '面包屑': '$dir/bread.png',
+    // Pepper / spice
+    '黑胡椒': '$dir/pepper-grinder.png',
+    '白胡椒': '$dir/pepper-grinder.png',
+    '胡椒粉': '$dir/pepper-grinder.png',
+    '胡椒': '$dir/pepper-grinder.png',
+    '花椒': '$dir/pepper-grinder.png',
+    '孜然': '$dir/pepper-grinder.png',
+    '五香粉': '$dir/pepper-grinder.png',
+    '咖喱': '$dir/pepper-grinder.png',
+    '八角': '$dir/pepper-grinder.png',
+    '桂皮': '$dir/pepper-grinder.png',
+    '香叶': '$dir/organic-food.png',
+    '香菜': '$dir/lettuce.png',
+    '芝麻': '$dir/olive.png',
+    // Chili
+    '干辣椒': '$dir/chili-pepper.png',
+    '小米辣': '$dir/chili-pepper.png',
+    '小米椒': '$dir/chili-pepper.png',
+    '青辣椒': '$dir/chili-pepper.png',
+    '红辣椒': '$dir/chili-pepper.png',
+    '辣椒粉': '$dir/chili-pepper.png',
+    '辣椒面': '$dir/chili-pepper.png',
+    '辣椒油': '$dir/chili-pepper.png',
+    '辣椒': '$dir/chili-pepper.png',
+    '青椒': '$dir/chili-pepper.png',
+    '豆瓣酱': '$dir/jam.png',
+    // Oils / sauces
+    '香油': '$dir/olive.png',
+    '芝麻油': '$dir/olive.png',
+    '橄榄油': '$dir/olive.png',
+    '花生油': '$dir/olive.png',
+    '食用油': '$dir/olive.png',
+    '猪油': '$dir/olive.png',
+    '色拉油': '$dir/olive.png',
+    '菜籽油': '$dir/olive.png',
+    '蚝油': '$dir/jam.png',
+    '生抽': '$dir/jam.png',
+    '老抽': '$dir/jam.png',
+    '酱油': '$dir/jam.png',
+    '料酒': '$dir/beer.png',
+    '番茄酱': '$dir/jam.png',
+    '果酱': '$dir/apple-jam.png',
+    '沙拉酱': '$dir/mayonnaise.png',
+    '蛋黄酱': '$dir/mayonnaise.png',
+    '美乃滋': '$dir/mayonnaise.png',
+    '醋': '$dir/jam.png',
+    '酱': '$dir/jam.png',
+    '油': '$dir/olive.png',
+    // Salt / sugar
+    '食用盐': '$dir/salt-shaker.png',
+    '食盐': '$dir/salt-shaker.png',
+    '盐': '$dir/salt-shaker.png',
+    '味精': '$dir/salt-shaker.png',
+    '鸡精': '$dir/salt-shaker.png',
+    '冰糖': '$dir/sugar.png',
+    '白砂糖': '$dir/sugar.png',
+    '白糖': '$dir/sugar.png',
+    '糖': '$dir/sugar.png',
+    // Aromatics
+    '大蒜': '$dir/garlic.png',
+    '蒜瓣': '$dir/garlic.png',
+    '蒜苗': '$dir/garlic.png',
+    '蒜': '$dir/garlic.png',
+    '生姜': '$dir/garlic.png',
+    '姜': '$dir/garlic.png',
+    '大葱': '$dir/onion.png',
+    '小葱': '$dir/onion.png',
+    '香葱': '$dir/onion.png',
+    '葱花': '$dir/onion.png',
+    '洋葱': '$dir/onion.png',
+    '葱': '$dir/onion.png',
+    // Produce
+    '西红柿': '$dir/tomato.png',
+    '番茄': '$dir/tomato.png',
+    '土豆': '$dir/potato.png',
+    '马铃薯': '$dir/potato.png',
+    '茄子': '$dir/beet.png',
+    '胡萝卜': '$dir/carrot.png',
+    '白萝卜': '$dir/carrot.png',
+    '萝卜': '$dir/carrot.png',
+    '西兰花': '$dir/broccoli.png',
+    '花菜': '$dir/broccoli.png',
+    '白菜': '$dir/lettuce.png',
+    '生菜': '$dir/lettuce.png',
+    '菠菜': '$dir/lettuce.png',
+    '青菜': '$dir/lettuce.png',
+    '蔬菜': '$dir/broccoli.png',
+    '蘑菇': '$dir/mushroom.png',
+    '香菇': '$dir/mushroom.png',
+    '金针菇': '$dir/mushroom.png',
+    '菌': '$dir/mushroom.png',
+    '玉米': '$dir/corn.png',
+    '豌豆': '$dir/peas.png',
+    '豆腐': '$dir/cheese.png',
+    '豆干': '$dir/cheese.png',
+    // Fruit
+    '苹果': '$dir/apple.png',
+    '香蕉': '$dir/banana.png',
+    '草莓': '$dir/strawberry.png',
+    '蓝莓': '$dir/blueberry.png',
+    '樱桃': '$dir/cherry.png',
+    '柠檬': '$dir/citrus.png',
+    '橙子': '$dir/citrus.png',
+    '橘子': '$dir/citrus.png',
+    '柑': '$dir/citrus.png',
+    '橙': '$dir/citrus.png',
+    '橘': '$dir/citrus.png',
+    // Proteins
+    '五花肉': '$dir/steak.png',
+    '牛肉': '$dir/steak.png',
+    '猪肉': '$dir/steak.png',
+    '羊肉': '$dir/lamb.png',
+    '牛排': '$dir/steak.png',
+    '排骨': '$dir/steak.png',
+    '火腿': '$dir/sausage.png',
+    '香肠': '$dir/sausage.png',
+    '腊肠': '$dir/sausage.png',
+    '培根': '$dir/salami.png',
+    '鸡肉': '$dir/chicken.png',
+    '鸡翅': '$dir/chicken.png',
+    '鸡腿': '$dir/chicken.png',
+    '鸡胸': '$dir/chicken.png',
+    '鸡': '$dir/chicken.png',
+    '鸭': '$dir/chicken.png',
+    '虾': '$dir/prawn.png',
+    '蟹': '$dir/crab.png',
+    '贝': '$dir/shellfish.png',
+    '鱿鱼': '$dir/fish.png',
+    '海鲜': '$dir/fish.png',
+    '鱼': '$dir/fish.png',
+    '鸡蛋': '$dir/eggs.png',
+    '鸭蛋': '$dir/eggs.png',
+    '皮蛋': '$dir/eggs.png',
+    '蛋清': '$dir/eggs.png',
+    '蛋黄': '$dir/eggs.png',
+    '蛋': '$dir/eggs.png',
+    // Staples
+    '米饭': '$dir/rice-bowl.png',
+    '糯米': '$dir/rice-bowl.png',
+    '大米': '$dir/rice-bowl.png',
+    '米': '$dir/rice-bowl.png',
+    '粥': '$dir/porridge.png',
+    '挂面': '$dir/noodles.png',
+    '粉条': '$dir/noodles.png',
+    '米粉': '$dir/noodles.png',
+    '面条': '$dir/noodles.png',
+    '意面': '$dir/noodles.png',
+    '面': '$dir/noodles.png',
+    '饺子': '$dir/dumplings.png',
+    '馄饨': '$dir/dumplings.png',
+    '饺': '$dir/dumplings.png',
+    '吐司': '$dir/the-toast.png',
+    '面包': '$dir/bread.png',
+    '馒头': '$dir/bread.png',
+    '饼': '$dir/bread.png',
+    // Drinks / sweets
+    '咖啡': '$dir/coffee-to-go.png',
+    '红茶': '$dir/tea.png',
+    '绿茶': '$dir/tea.png',
+    '茶': '$dir/tea.png',
+    '啤酒': '$dir/beer.png',
+    '红酒': '$dir/beer.png',
+    '白酒': '$dir/beer.png',
+    '酒': '$dir/beer.png',
+    '巧克力': '$dir/chocolate-bar.png',
+    '冰淇淋': '$dir/ice-cream-cone.png',
+    '冰激凌': '$dir/ice-cream-cone.png',
+    '蛋糕': '$dir/cake.png',
+    '布丁': '$dir/cheesecake.png',
+    '罐头': '$dir/tin-can.png',
+    // Liquids
+    '清水': '$dir/water.png',
+    '开水': '$dir/water.png',
+    '高汤': '$dir/soup-plate.png',
+    '清汤': '$dir/soup-plate.png',
+    '汤': '$dir/soup-plate.png',
+    '冰': '$dir/water.png',
+    '水': '$dir/water.png',
+    // Tools
+    '炒锅': '$dir/cooking-pot.png',
+    '汤锅': '$dir/cooking-pot.png',
+    '锅': '$dir/cooking-pot.png',
+    '菜刀': '$dir/knife.png',
+    '刀': '$dir/knife.png',
+    '铲子': '$dir/cutlery.png',
+    '筷子': '$dir/cutlery.png',
+    '勺子': '$dir/cutlery.png',
+    '碗': '$dir/soup-plate.png',
+    '盘': '$dir/tableware.png',
+    '烤箱': '$dir/oven-mitten.png',
+    '工具': '$dir/cutlery.png',
+    // Broad meat last
+    '肉': '$dir/steak.png',
+    '腊': '$dir/salami.png',
+    '麦': '$dir/wheat.png',
+  };
 
-    if (has('虾') || has('蟹') || has('贝') || has('鱼') || has('海鲜') || has('鱿鱼')) {
-      if (has('虾')) return '$dir/prawn.png';
-      if (has('蟹')) return '$dir/crab.png';
-      return '$dir/fish.png';
+  /// Heuristic map from 原料/工具 Chinese text → doodle asset.
+  static String forIngredient(String raw) {
+    final t = normalizeIngredient(raw);
+    if (t.isEmpty) return fallback;
+
+    String? best;
+    var bestLen = 0;
+    for (final entry in keywordAssets.entries) {
+      if (t.contains(entry.key) && entry.key.length > bestLen) {
+        best = entry.value;
+        bestLen = entry.key.length;
+      }
     }
-    if (has('牛') || has('排') || has('猪') || has('羊') || has('肉') || has('腊')) {
-      if (has('肠') || has('火腿')) return '$dir/sausage.png';
-      return '$dir/steak.png';
+    if (best != null) return best;
+
+    if (t.contains('奶') || t.contains('乳')) return '$dir/milk-bottle.png';
+    if (t.contains('粉') && !t.contains('粉条') && !t.contains('辣椒')) {
+      return '$dir/wheat.png';
     }
-    if (has('鸡') || has('鸭') || has('翅') || has('腿')) return '$dir/chicken.png';
-    if (has('蛋')) return '$dir/eggs.png';
-    if (has('米') || has('饭') || has('粥')) return '$dir/rice-bowl.png';
-    if (has('面') || has('粉条') || has('挂面')) return '$dir/noodles.png';
-    if (has('饺') || has('馄饨')) return '$dir/dumplings.png';
-    if (has('面包') || has('吐司') || has('馒头') || has('饼')) return '$dir/bread.png';
-    if (has('面粉') || has('淀粉') || has('麦')) return '$dir/wheat.png';
-    if (has('盐') || has('味精') || has('鸡精')) return '$dir/salt-shaker.png';
-    if (has('糖')) return '$dir/sugar.png';
-    if (has('酱') || has('醋') || has('油') || has('蚝油') || has('酱油')) {
-      if (has('辣椒') || has('辣')) return '$dir/chili-pepper.png';
-      return '$dir/jam.png';
-    }
-    if (has('辣椒') || has('花椒') || has('胡椒') || has('辣')) return '$dir/chili-pepper.png';
-    if (has('蒜')) return '$dir/garlic.png';
-    if (has('葱') || has('洋葱')) return '$dir/onion.png';
-    if (has('姜')) return '$dir/garlic.png';
-    if (has('番茄') || has('西红柿')) return '$dir/tomato.png';
-    if (has('土豆') || has('马铃薯')) return '$dir/potato.png';
-    if (has('胡萝卜') || has('萝卜')) return '$dir/carrot.png';
-    if (has('西兰花') || has('花菜') || has('白菜') || has('青菜') || has('菠菜') || has('生菜') || has('蔬菜')) {
-      if (has('生菜')) return '$dir/lettuce.png';
-      return '$dir/broccoli.png';
-    }
-    if (has('蘑菇') || has('香菇') || has('菌')) return '$dir/mushroom.png';
-    if (has('玉米')) return '$dir/corn.png';
-    if (has('豆腐')) return '$dir/cheese.png';
-    if (has('奶') || has('乳')) return '$dir/milk-bottle.png';
-    if (has('奶酪') || has('芝士') || has('黄油')) return '$dir/cheese.png';
-    if (has('苹果')) return '$dir/apple.png';
-    if (has('香蕉')) return '$dir/banana.png';
-    if (has('草莓')) return '$dir/strawberry.png';
-    if (has('蓝莓') || has('莓')) return '$dir/blueberry.png';
-    if (has('樱桃')) return '$dir/cherry.png';
-    if (has('橙') || has('橘') || has('柠檬') || has('柑')) return '$dir/citrus.png';
-    if (has('咖啡')) return '$dir/coffee-to-go.png';
-    if (has('茶')) return '$dir/tea.png';
-    if (has('酒') || has('啤')) return '$dir/beer.png';
-    if (has('水') || has('汤') || has('高汤') || has('清汤')) {
-      if (has('汤')) return '$dir/soup-plate.png';
-      return '$dir/water.png';
-    }
-    if (has('冰淇') || has('甜品') || has('蛋糕') || has('布丁')) {
-      if (has('蛋糕')) return '$dir/cake.png';
-      return '$dir/ice-cream-cone.png';
-    }
-    if (has('巧克力')) return '$dir/chocolate-bar.png';
-    if (has('罐头') || has('半成品')) return '$dir/tin-can.png';
-    if (has('锅') || has('铲') || has('刀') || has('叉') || has('勺') || has('碗') || has('盘') || has('工具') || has('筷子')) {
-      if (has('锅')) return '$dir/cooking-pot.png';
-      return '$dir/cutlery.png';
-    }
+    if (t.contains('辣')) return '$dir/chili-pepper.png';
+    if (t.contains('菜')) return '$dir/lettuce.png';
     return fallback;
   }
 
