@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
 
-/// Interaction 2 — one checkbox tap drives progress ring + rolling fraction + tint.
+/// Interaction 2 — big progress ring + rolling n/N + card tints green (bold).
 class LinkedChecklist extends StatefulWidget {
   final List<String> items;
   final String title;
@@ -45,7 +45,7 @@ class _LinkedChecklistState extends State<LinkedChecklist>
   }
 
   void _toggle(int i) {
-    HapticFeedback.selectionClick();
+    HapticFeedback.mediumImpact();
     setState(() {
       if (_checked.contains(i)) {
         _checked.remove(i);
@@ -65,7 +65,7 @@ class _LinkedChecklistState extends State<LinkedChecklist>
     final total = widget.items.length;
     final done = _checked.length;
     final progress = total == 0 ? 0.0 : done / total;
-    final tint = Color.lerp(Colors.white, AppTheme.lime, progress * 0.85)!;
+    final tint = Color.lerp(Colors.white, AppTheme.neon, progress * 0.72)!;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -73,17 +73,26 @@ class _LinkedChecklistState extends State<LinkedChecklist>
         AnimatedContainer(
           duration: const Duration(milliseconds: 380),
           curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: tint,
             borderRadius: BorderRadius.circular(AppTheme.radius),
-            boxShadow: AppTheme.softShadow(opacity: 0.06),
+            boxShadow: AppTheme.softShadow(opacity: 0.14),
+            border: Border.all(
+              color: Color.lerp(
+                    AppTheme.purple.withValues(alpha: 0.15),
+                    AppTheme.neon,
+                    progress,
+                  ) ??
+                  AppTheme.neon,
+              width: 2,
+            ),
           ),
           child: Row(
             children: [
               SizedBox(
-                width: 64,
-                height: 64,
+                width: 84,
+                height: 84,
                 child: TweenAnimationBuilder<double>(
                   tween: Tween(begin: 0, end: progress),
                   duration: const Duration(milliseconds: 480),
@@ -92,15 +101,17 @@ class _LinkedChecklistState extends State<LinkedChecklist>
                     return CustomPaint(
                       painter: _RingPainter(
                         progress: value,
-                        track: AppTheme.ink.withValues(alpha: 0.12),
-                        fill: AppTheme.ink,
+                        track: AppTheme.navy.withValues(alpha: 0.12),
+                        fill: AppTheme.navy,
+                        glow: AppTheme.neon,
                       ),
                       child: Center(
                         child: Text(
-                          '${(value * 100).round()}',
+                          '${(value * 100).round()}%',
                           style: const TextStyle(
                             fontWeight: FontWeight.w900,
                             fontSize: 16,
+                            color: AppTheme.navy,
                           ),
                         ),
                       ),
@@ -108,28 +119,29 @@ class _LinkedChecklistState extends State<LinkedChecklist>
                   },
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 18),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.title.toUpperCase(),
+                      widget.title,
                       style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
-                        color: AppTheme.ink.withValues(alpha: 0.55),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.0,
+                        color: AppTheme.navy.withValues(alpha: 0.55),
                       ),
                     ),
                     const SizedBox(height: 4),
                     _RollingFraction(done: done, total: total),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
-                      done == total && total > 0 ? '全部备齐' : '勾选已备原料',
+                      done == total && total > 0 ? '✓ 全部备齐！' : '勾选已备原料 → 卡片变绿',
                       style: TextStyle(
                         fontSize: 13,
-                        color: AppTheme.ink.withValues(alpha: 0.65),
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.navy.withValues(alpha: 0.7),
                       ),
                     ),
                   ],
@@ -138,7 +150,7 @@ class _LinkedChecklistState extends State<LinkedChecklist>
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         ...List.generate(widget.items.length, (i) {
           final checked = _checked.contains(i);
           return _CheckRow(
@@ -165,17 +177,21 @@ class _RollingFraction extends StatelessWidget {
       children: [
         TweenAnimationBuilder<double>(
           key: ValueKey(done),
-          tween: Tween(begin: (done - 1).clamp(0, total).toDouble(), end: done.toDouble()),
+          tween: Tween(
+            begin: (done - 1).clamp(0, total).toDouble(),
+            end: done.toDouble(),
+          ),
           duration: const Duration(milliseconds: 360),
           curve: Curves.easeOutCubic,
           builder: (context, v, _) {
             return Text(
               '${v.round()}',
               style: const TextStyle(
-                fontSize: 36,
+                fontSize: 42,
                 fontWeight: FontWeight.w900,
                 height: 1,
-                letterSpacing: -1,
+                letterSpacing: -1.5,
+                color: AppTheme.navy,
               ),
             );
           },
@@ -183,9 +199,9 @@ class _RollingFraction extends StatelessWidget {
         Text(
           '/$total',
           style: TextStyle(
-            fontSize: 22,
+            fontSize: 24,
             fontWeight: FontWeight.w800,
-            color: AppTheme.ink.withValues(alpha: 0.45),
+            color: AppTheme.navy.withValues(alpha: 0.4),
           ),
         ),
       ],
@@ -206,31 +222,43 @@ class _CheckRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: Colors.white,
+        color: checked
+            ? AppTheme.neon.withValues(alpha: 0.35)
+            : Colors.white,
         borderRadius: BorderRadius.circular(18),
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
           onTap: onTap,
-          child: Padding(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 280),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: checked
+                    ? AppTheme.neon
+                    : AppTheme.purple.withValues(alpha: 0.15),
+                width: checked ? 2 : 1,
+              ),
+            ),
             child: Row(
               children: [
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 220),
-                  width: 26,
-                  height: 26,
+                  width: 30,
+                  height: 30,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: checked ? AppTheme.lime : Colors.transparent,
+                    color: checked ? AppTheme.neon : Colors.transparent,
                     border: Border.all(
-                      color: checked ? AppTheme.ink : const Color(0xFFC7C7CC),
-                      width: 1.6,
+                      color: checked ? AppTheme.navy : const Color(0xFFC7C7CC),
+                      width: 2,
                     ),
                   ),
                   child: checked
-                      ? const Icon(Icons.check, size: 16, color: AppTheme.ink)
+                      ? const Icon(Icons.check, size: 18, color: AppTheme.navy)
                       : null,
                 ),
                 const SizedBox(width: 12),
@@ -242,10 +270,8 @@ class _CheckRow extends StatelessWidget {
                       height: 1.35,
                       decoration:
                           checked ? TextDecoration.lineThrough : null,
-                      color: checked
-                          ? AppTheme.muted
-                          : AppTheme.ink,
-                      fontWeight: FontWeight.w500,
+                      color: checked ? AppTheme.muted : AppTheme.navy,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -262,33 +288,49 @@ class _RingPainter extends CustomPainter {
   final double progress;
   final Color track;
   final Color fill;
+  final Color glow;
   _RingPainter({
     required this.progress,
     required this.track,
     required this.fill,
+    required this.glow,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = Offset(size.width / 2, size.height / 2);
-    final r = math.min(size.width, size.height) / 2 - 4;
-    final trackPaint = Paint()
-      ..color = track
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 7
-      ..strokeCap = StrokeCap.round;
-    final fillPaint = Paint()
-      ..color = fill
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 7
-      ..strokeCap = StrokeCap.round;
-    canvas.drawCircle(c, r, trackPaint);
+    final r = math.min(size.width, size.height) / 2 - 5;
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..color = track
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 9
+        ..strokeCap = StrokeCap.round,
+    );
     canvas.drawArc(
       Rect.fromCircle(center: c, radius: r),
       -math.pi / 2,
       2 * math.pi * progress,
       false,
-      fillPaint,
+      Paint()
+        ..color = glow
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 10
+        ..strokeCap = StrokeCap.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2),
+    );
+    canvas.drawArc(
+      Rect.fromCircle(center: c, radius: r),
+      -math.pi / 2,
+      2 * math.pi * progress,
+      false,
+      Paint()
+        ..color = fill
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round,
     );
   }
 

@@ -15,7 +15,7 @@ class CircularRevealRoute<T> extends PageRouteBuilder<T> {
     super.settings,
   }) : super(
           pageBuilder: (context, animation, secondary) => page,
-          transitionDuration: const Duration(milliseconds: 520),
+          transitionDuration: const Duration(milliseconds: 450),
           reverseTransitionDuration: const Duration(milliseconds: 380),
           opaque: false,
           barrierDismissible: false,
@@ -27,7 +27,7 @@ class CircularRevealRoute<T> extends PageRouteBuilder<T> {
                 reverseCurve: Curves.easeInCubic,
               ),
               center: center,
-              veilColor: veilColor ?? const Color(0xFF1A1A1A),
+              veilColor: veilColor ?? const Color(0xFF8B7CFF),
               child: child,
             );
           },
@@ -77,15 +77,15 @@ class _CircularReveal extends StatelessWidget {
         final maxR = _maxRadius(size, center);
         final t = animation.value;
         // First half: expanding dark veil; second: reveal page through clip.
-        final veilT = (t / 0.55).clamp(0.0, 1.0);
-        final pageT = ((t - 0.25) / 0.75).clamp(0.0, 1.0);
+        final veilT = (t / 0.45).clamp(0.0, 1.0);
+        final pageT = ((t - 0.18) / 0.82).clamp(0.0, 1.0);
         return Stack(
           fit: StackFit.expand,
           children: [
             if (veilT < 1)
               ClipPath(
                 clipper: _CircleClipper(center: center, radius: maxR * veilT),
-                child: ColoredBox(color: veilColor.withValues(alpha: 0.92)),
+                child: ColoredBox(color: veilColor.withValues(alpha: 0.98)),
               ),
             ClipPath(
               clipper: _CircleClipper(center: center, radius: maxR * pageT),

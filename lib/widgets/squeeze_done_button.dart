@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
 
-/// Interaction 1 — SQUEEZE → TICK → BURST completion feedback.
+/// Interaction 1 — SQUEEZE → circle → TICK → particle BURST (bold / obvious).
 class SqueezeDoneButton extends StatefulWidget {
   final String label;
   final VoidCallback? onCompleted;
@@ -18,8 +18,8 @@ class SqueezeDoneButton extends StatefulWidget {
     this.label = '完成这一步',
     this.onCompleted,
     this.resettable = true,
-    this.height = 52,
-    this.color = AppTheme.lime,
+    this.height = 56,
+    this.color = AppTheme.neon,
   });
 
   @override
@@ -39,19 +39,19 @@ class SqueezeDoneButtonState extends State<SqueezeDoneButton>
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1100),
+      duration: const Duration(milliseconds: 900),
     );
     _squeeze = CurvedAnimation(
       parent: _ctrl,
-      curve: const Interval(0.0, 0.35, curve: Curves.easeInOutCubic),
+      curve: const Interval(0.0, 0.32, curve: Curves.easeInOutCubic),
     );
     _tick = CurvedAnimation(
       parent: _ctrl,
-      curve: const Interval(0.28, 0.55, curve: Curves.easeOutBack),
+      curve: const Interval(0.28, 0.52, curve: Curves.elasticOut),
     );
     _burst = CurvedAnimation(
       parent: _ctrl,
-      curve: const Interval(0.48, 1.0, curve: Curves.easeOutCubic),
+      curve: const Interval(0.42, 1.0, curve: Curves.easeOutCubic),
     );
   }
 
@@ -63,7 +63,7 @@ class SqueezeDoneButtonState extends State<SqueezeDoneButton>
 
   Future<void> trigger() async {
     if (_done && !widget.resettable) return;
-    HapticFeedback.mediumImpact();
+    HapticFeedback.heavyImpact();
     setState(() => _done = true);
     await _ctrl.forward(from: 0);
     widget.onCompleted?.call();
@@ -80,21 +80,20 @@ class SqueezeDoneButtonState extends State<SqueezeDoneButton>
       animation: _ctrl,
       builder: (context, _) {
         final squeezeT = _squeeze.value;
-        // Width morphs from full pill → circle.
-        final widthFactor = 1.0 - squeezeT * 0.72;
+        final widthFactor = 1.0 - squeezeT * 0.78;
         final circleBlend = squeezeT;
         final showTick = _tick.value;
         final burstT = _burst.value;
 
         return SizedBox(
-          height: widget.height + 40,
+          height: widget.height + 72,
           child: Stack(
             alignment: Alignment.center,
             clipBehavior: Clip.none,
             children: [
               if (burstT > 0)
                 CustomPaint(
-                  size: Size(widget.height * 3.2, widget.height * 3.2),
+                  size: Size(widget.height * 4.5, widget.height * 4.5),
                   painter: _BurstPainter(
                     progress: burstT,
                     color: widget.color,
@@ -106,29 +105,22 @@ class SqueezeDoneButtonState extends State<SqueezeDoneButton>
                   builder: (context, constraints) {
                     final maxW = constraints.maxWidth.isFinite
                         ? constraints.maxWidth
-                        : 220.0;
-                    final w = math.max(
-                      widget.height,
-                      maxW * widthFactor,
-                    );
-                    return AnimatedContainer(
-                      duration: Duration.zero,
+                        : 240.0;
+                    final w = math.max(widget.height, maxW * widthFactor);
+                    return Container(
                       width: w,
                       height: widget.height,
                       decoration: BoxDecoration(
-                        color: Color.lerp(
-                          widget.color,
-                          widget.color,
-                          circleBlend,
-                        ),
+                        color: widget.color,
                         borderRadius: BorderRadius.circular(
-                          lerpDouble(28, widget.height / 2, circleBlend)!,
+                          _lerp(28, widget.height / 2, circleBlend),
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: widget.color.withValues(alpha: 0.35),
-                            blurRadius: 16,
-                            offset: const Offset(0, 6),
+                            color: widget.color.withValues(alpha: 0.55),
+                            blurRadius: 22,
+                            spreadRadius: 2,
+                            offset: const Offset(0, 8),
                           ),
                         ],
                       ),
@@ -137,20 +129,20 @@ class SqueezeDoneButtonState extends State<SqueezeDoneButton>
                           ? Opacity(
                               opacity: showTick.clamp(0.0, 1.0),
                               child: Transform.scale(
-                                scale: 0.6 + 0.4 * showTick,
+                                scale: 0.5 + 0.5 * showTick,
                                 child: Icon(
                                   Icons.check_rounded,
-                                  color: AppTheme.ink,
-                                  size: widget.height * 0.55,
+                                  color: AppTheme.navy,
+                                  size: widget.height * 0.6,
                                 ),
                               ),
                             )
                           : Text(
                               widget.label,
                               style: const TextStyle(
-                                color: AppTheme.ink,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 15,
+                                color: AppTheme.navy,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 16,
                               ),
                             ),
                     );
@@ -164,7 +156,7 @@ class SqueezeDoneButtonState extends State<SqueezeDoneButton>
     );
   }
 
-  double? lerpDouble(num a, num b, double t) => a + (b - a) * t;
+  double _lerp(num a, num b, double t) => (a + (b - a) * t).toDouble();
 }
 
 class _BurstPainter extends CustomPainter {
@@ -176,22 +168,32 @@ class _BurstPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final rnd = math.Random(7);
-    final n = 18;
+    const n = 28;
     for (var i = 0; i < n; i++) {
-      final angle = (i / n) * math.pi * 2 + rnd.nextDouble() * 0.2;
-      final dist = 18 + progress * (36 + rnd.nextDouble() * 28);
-      final r = (3.0 + rnd.nextDouble() * 3.5) * (1 - progress * 0.55);
+      final angle = (i / n) * math.pi * 2 + rnd.nextDouble() * 0.25;
+      final dist = 28 + progress * (70 + rnd.nextDouble() * 50);
+      final r = (5.0 + rnd.nextDouble() * 6) * (1 - progress * 0.5);
       final p = center + Offset(math.cos(angle) * dist, math.sin(angle) * dist);
       final paint = Paint()
         ..color = [
           color,
-          AppTheme.orange,
+          AppTheme.coral,
+          AppTheme.purple,
           AppTheme.lavender,
-          AppTheme.blue,
           Colors.white,
         ][i % 5]
-            .withValues(alpha: (1 - progress).clamp(0.0, 1.0));
-      canvas.drawCircle(p, r, paint);
+            .withValues(alpha: (1 - progress * 0.85).clamp(0.0, 1.0));
+      if (i % 3 == 0) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: p, width: r * 2.2, height: r * 1.1),
+            const Radius.circular(4),
+          ),
+          paint,
+        );
+      } else {
+        canvas.drawCircle(p, r, paint);
+      }
     }
   }
 

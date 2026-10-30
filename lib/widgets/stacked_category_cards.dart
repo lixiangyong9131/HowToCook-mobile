@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/recipe.dart';
 import '../theme/app_theme.dart';
 
-/// Interaction 3 — overlapping stack that fans into a colorful list.
+/// Interaction 3 — overlapping stack that FANS OUT with spring (bold, obvious).
 class StackedCategoryCards extends StatefulWidget {
   final List<CategoryInfo> categories;
   final Map<String, int> counts;
   final ValueChanged<CategoryInfo> onOpen;
   final bool initiallyExpanded;
+  final bool autoFanOnMount;
 
   const StackedCategoryCards({
     super.key,
@@ -16,6 +18,7 @@ class StackedCategoryCards extends StatefulWidget {
     required this.counts,
     required this.onOpen,
     this.initiallyExpanded = false,
+    this.autoFanOnMount = false,
   });
 
   @override
@@ -30,12 +33,21 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   @override
   void initState() {
     super.initState();
-    _expanded = widget.initiallyExpanded;
+    _expanded = widget.initiallyExpanded && !widget.autoFanOnMount;
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 520),
+      duration: const Duration(milliseconds: 780),
       value: _expanded ? 1 : 0,
     );
+    if (widget.autoFanOnMount) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await Future<void>.delayed(const Duration(milliseconds: 280));
+        if (!mounted) return;
+        HapticFeedback.mediumImpact();
+        setState(() => _expanded = true);
+        _ctrl.forward(from: 0);
+      });
+    }
   }
 
   @override
@@ -45,6 +57,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   }
 
   void _toggle() {
+    HapticFeedback.selectionClick();
     setState(() => _expanded = !_expanded);
     if (_expanded) {
       _ctrl.forward();
@@ -57,11 +70,10 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   Widget build(BuildContext context) {
     final cats = widget.categories;
     final n = cats.length;
-    // Collapsed stack height vs expanded list height.
-    const cardH = 76.0;
-    const peek = 18.0;
-    final collapsedH = cardH + peek * (n.clamp(0, 4) - 1).clamp(0, 99);
-    final expandedH = n * (cardH + 10) - 10;
+    const cardH = 88.0;
+    const peek = 22.0;
+    final collapsedH = cardH + peek * (n.clamp(0, 5) - 1).clamp(0, 99);
+    final expandedH = n * (cardH + 12) - 12;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -79,36 +91,41 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.muted,
-                letterSpacing: 0.3,
               ),
             ),
             const SizedBox(width: 8),
-            TextButton(
+            FilledButton(
               onPressed: _toggle,
-              style: TextButton.styleFrom(
-                foregroundColor: AppTheme.ink,
-                padding: const EdgeInsets.symmetric(horizontal: 10),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.navy,
+                foregroundColor: AppTheme.neon,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
               child: Text(
-                _expanded ? '叠起' : '展开',
+                _expanded ? '叠起 ↑' : '展开 ↓',
                 style: const TextStyle(fontWeight: FontWeight.w800),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         AnimatedBuilder(
           animation: _ctrl,
           builder: (context, _) {
-            final t = Curves.easeOutCubic.transform(_ctrl.value);
-            final height = collapsedH + (expandedH - collapsedH) * t;
+            final t = Curves.elasticOut.transform(_ctrl.value.clamp(0.0, 1.0));
+            // elasticOut can overshoot >1 — clamp height math
+            final tt = t.clamp(0.0, 1.15);
+            final height = collapsedH + (expandedH - collapsedH) * tt.clamp(0.0, 1.0);
             return SizedBox(
-              height: height,
+              height: height + 8,
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
                   for (var i = 0; i < n; i++)
-                    _buildCard(i, n, t, cardH, peek),
+                    _buildCard(i, n, tt.clamp(0.0, 1.0), cardH, peek),
                 ],
               ),
             );
@@ -122,77 +139,79 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     final cat = widget.categories[i];
     final color = categoryAccent(cat.id, i);
     final dark = isDarkCard(color);
-    final fg = dark ? Colors.white : AppTheme.ink;
+    final fg = dark ? Colors.white : AppTheme.navy;
     final count = widget.counts[cat.id] ?? 0;
 
-    // Collapsed: stacked with peeks from top; Expanded: vertical list.
     final stackTop = i * peek;
-    final listTop = i * (cardH + 10);
+    final listTop = i * (cardH + 12);
     final top = stackTop + (listTop - stackTop) * t;
-    // Slight horizontal offset when stacked for depth.
-    final dx = (1 - t) * (i % 2 == 0 ? -2.0 : 2.0);
-    final scale = 1.0 - (1 - t) * (n - 1 - i).clamp(0, 3) * 0.012;
+    final dx = (1 - t) * (i % 2 == 0 ? -6.0 : 6.0);
+    final rot = (1 - t) * (i % 2 == 0 ? -0.03 : 0.03);
+    final scale = 1.0 - (1 - t) * (n - 1 - i).clamp(0, 4) * 0.02;
 
-    return AnimatedPositioned(
-      duration: Duration.zero,
+    return Positioned(
       top: top,
       left: 0 + dx,
       right: 0 - dx,
-      child: Transform.scale(
-        scale: scale,
-        alignment: Alignment.topCenter,
-        child: GestureDetector(
-          onTap: () {
-            if (!_expanded) {
-              _toggle();
-              return;
-            }
-            widget.onOpen(cat);
-          },
-          child: Container(
-            height: cardH,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(AppTheme.radius),
-              border: color == Colors.white
-                  ? Border.all(color: const Color(0xFFE5E5EA))
-                  : null,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08 + (1 - t) * 0.04),
-                  blurRadius: 16,
-                  offset: Offset(0, 6 + (1 - t) * 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Text(
-                  categoryEmojis[cat.id] ?? '📖',
-                  style: const TextStyle(fontSize: 28),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    cat.name,
-                    style: TextStyle(
-                      color: fg,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
+      child: Transform.rotate(
+        angle: rot,
+        child: Transform.scale(
+          scale: scale,
+          alignment: Alignment.topCenter,
+          child: GestureDetector(
+            onTap: () {
+              if (!_expanded) {
+                _toggle();
+                return;
+              }
+              HapticFeedback.lightImpact();
+              widget.onOpen(cat);
+            },
+            child: Container(
+              height: cardH,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(AppTheme.radius),
+                border: color == Colors.white
+                    ? Border.all(color: AppTheme.purple.withValues(alpha: 0.2))
+                    : null,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.35),
+                    blurRadius: 18,
+                    offset: Offset(0, 8 + (1 - t) * 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    categoryEmojis[cat.id] ?? '📖',
+                    style: const TextStyle(fontSize: 32),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      cat.name,
+                      style: TextStyle(
+                        color: fg,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
-                ),
-                Text(
-                  '$count',
-                  style: TextStyle(
-                    color: fg.withValues(alpha: 0.85),
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      color: fg.withValues(alpha: 0.9),
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

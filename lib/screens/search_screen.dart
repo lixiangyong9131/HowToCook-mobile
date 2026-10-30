@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../main.dart';
 import '../models/recipe.dart';
 import '../routes/circular_reveal_route.dart';
 import '../services/recipe_repository.dart';
@@ -8,18 +9,37 @@ import '../widgets/recipe_card.dart';
 import 'recipe_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  final String? initialQuery;
+  const SearchScreen({super.key, this.initialQuery});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
 class _SearchScreenState extends State<SearchScreen> {
-  final _controller = TextEditingController();
+  late final TextEditingController _controller;
   List<Recipe> _results = const [];
 
-  void _onChanged(String value) {
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialQuery ?? '');
+    if ((widget.initialQuery ?? '').trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _runSearch(widget.initialQuery!.trim(), persist: true);
+      });
+    }
+  }
+
+  void _runSearch(String value, {bool persist = false}) {
     setState(() => _results = RecipeRepository.instance.search(value));
+    if (persist && value.trim().isNotEmpty) {
+      HistoryScope.of(context).addSearch(value.trim());
+    }
+  }
+
+  void _onChanged(String value) {
+    _runSearch(value, persist: false);
   }
 
   @override
@@ -39,8 +59,9 @@ class _SearchScreenState extends State<SearchScreen> {
           padding: const EdgeInsets.only(right: 16),
           child: TextField(
             controller: _controller,
-            autofocus: true,
+            autofocus: (widget.initialQuery ?? '').isEmpty,
             style: const TextStyle(fontWeight: FontWeight.w600),
+            textInputAction: TextInputAction.search,
             decoration: InputDecoration(
               hintText: '搜索菜名或原料…',
               filled: true,
@@ -62,6 +83,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     ),
             ),
             onChanged: _onChanged,
+            onSubmitted: (v) => _runSearch(v, persist: true),
           ),
         ),
       ),
@@ -85,7 +107,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     ..._results.asMap().entries.map((e) {
                       final r = e.value;
                       final color =
-                          categoryColors[r.categoryId] ?? AppTheme.lime;
+                          categoryColors[r.categoryId] ?? AppTheme.neon;
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: Builder(
@@ -105,6 +127,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                   context,
                                   page: RecipeDetailScreen(recipe: r),
                                   from: origin,
+                                  veilColor: AppTheme.purple,
                                 );
                               },
                             );

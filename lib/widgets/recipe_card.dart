@@ -26,18 +26,28 @@ class RecipeCard extends StatelessWidget {
     final dark = isDarkCard(accent);
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(22),
+      borderRadius: BorderRadius.circular(AppTheme.radius),
       child: InkWell(
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(AppTheme.radius),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: const Color(0xFFE8E8ED)),
+            borderRadius: BorderRadius.circular(AppTheme.radius),
+            boxShadow: AppTheme.softShadow(opacity: 0.10),
+            border: Border.all(color: AppTheme.purple.withValues(alpha: 0.12)),
           ),
           child: Row(
             children: [
+              Container(
+                width: 5,
+                height: 48,
+                decoration: BoxDecoration(
+                  gradient: AppTheme.logoGradient,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(width: 12),
               Container(
                 width: 44,
                 height: 44,
@@ -49,7 +59,7 @@ class RecipeCard extends StatelessWidget {
                 child: Text(
                   '$index',
                   style: TextStyle(
-                    color: dark ? Colors.white : AppTheme.ink,
+                    color: dark ? Colors.white : AppTheme.navy,
                     fontWeight: FontWeight.w900,
                     fontSize: 16,
                   ),
@@ -97,7 +107,7 @@ class RecipeCard extends StatelessWidget {
                                 recipe.difficultyStars,
                                 style: const TextStyle(
                                   fontSize: 12,
-                                  color: AppTheme.orange,
+                                  color: AppTheme.coral,
                                 ),
                               ),
                           ],
@@ -109,9 +119,9 @@ class RecipeCard extends StatelessWidget {
               if (fav)
                 const Padding(
                   padding: EdgeInsets.only(right: 6),
-                  child: Icon(Icons.favorite, size: 16, color: AppTheme.orange),
+                  child: Icon(Icons.favorite, size: 16, color: AppTheme.coral),
                 ),
-              const Icon(Icons.north_east, size: 18, color: AppTheme.muted),
+              const Icon(Icons.north_east, size: 18, color: AppTheme.purple),
             ],
           ),
         ),

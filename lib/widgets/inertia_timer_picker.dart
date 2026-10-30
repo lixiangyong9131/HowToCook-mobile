@@ -71,7 +71,7 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
               children: [
                 const Text(
                   '计时',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900),
                 ),
                 const Spacer(),
                 Text(
@@ -85,6 +85,14 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
                 ),
               ],
             ),
+            const Text(
+              '上下甩动滚轮选择时间',
+              style: TextStyle(
+                color: AppTheme.muted,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
             const SizedBox(height: 8),
             Text(
               label,
@@ -97,7 +105,7 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
             ),
             const SizedBox(height: 16),
             Container(
-              height: 180,
+              height: 220,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(AppTheme.radius),
@@ -112,6 +120,13 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
                     decoration: BoxDecoration(
                       color: AppTheme.lavender,
                       borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: AppTheme.purple, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.purple.withValues(alpha: 0.25),
+                          blurRadius: 12,
+                        ),
+                      ],
                     ),
                   ),
                   Row(
@@ -206,8 +221,8 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
               height: 54,
               child: FilledButton(
                 style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.ink,
-                  foregroundColor: Colors.white,
+                  backgroundColor: AppTheme.navy,
+                  foregroundColor: AppTheme.neon,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(999),
                   ),
@@ -247,7 +262,7 @@ class _Wheel extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListWheelScrollView.useDelegate(
       controller: controller,
-      itemExtent: 44,
+      itemExtent: 52,
       perspective: 0.003,
       diameterRatio: 1.35,
       physics: const FixedExtentScrollPhysics(
@@ -261,7 +276,7 @@ class _Wheel extends StatelessWidget {
             child: Text(
               labelBuilder(i),
               style: const TextStyle(
-                fontSize: 26,
+                fontSize: 32,
                 fontWeight: FontWeight.w800,
                 color: AppTheme.ink,
               ),

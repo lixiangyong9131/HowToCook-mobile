@@ -69,7 +69,7 @@ class FavoritesScreen extends StatelessWidget {
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(Icons.favorite_border,
-                                size: 32, color: AppTheme.ink),
+                                size: 32, color: AppTheme.navy),
                           ),
                           const SizedBox(height: 16),
                           const Text(
@@ -99,7 +99,7 @@ class FavoritesScreen extends StatelessWidget {
                               index: i + 1,
                               recipe: r,
                               accent: categoryColors[r.categoryId] ??
-                                  AppTheme.lime,
+                                  AppTheme.neon,
                               showCategory: true,
                               onTap: () {
                                 final box =

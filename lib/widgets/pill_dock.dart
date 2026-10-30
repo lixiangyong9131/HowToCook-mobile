@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
 
-/// Floating black pill bottom dock — selected tab = white circle behind icon.
+/// Navy pill dock with neon green active indicator.
 class PillDock extends StatelessWidget {
   final int index;
   final ValueChanged<int> onChanged;
@@ -36,11 +36,11 @@ class PillDock extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: AppTheme.blackCard,
+              color: AppTheme.navy,
               borderRadius: BorderRadius.circular(999),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.28),
+                  color: AppTheme.purple.withValues(alpha: 0.35),
                   blurRadius: 24,
                   offset: const Offset(0, 10),
                 ),
@@ -50,9 +50,8 @@ class PillDock extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: List.generate(icons.length, (i) {
                 final selected = i == index;
-                final icon = selected
-                    ? (selectedIcons?[i] ?? icons[i])
-                    : icons[i];
+                final icon =
+                    selected ? (selectedIcons?[i] ?? icons[i]) : icons[i];
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: GestureDetector(
@@ -64,16 +63,24 @@ class PillDock extends StatelessWidget {
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 240),
                       curve: Curves.easeOutCubic,
-                      width: 48,
-                      height: 48,
+                      width: 52,
+                      height: 52,
                       decoration: BoxDecoration(
-                        color: selected ? Colors.white : Colors.transparent,
+                        color: selected ? AppTheme.neon : Colors.transparent,
                         shape: BoxShape.circle,
+                        boxShadow: selected
+                            ? [
+                                BoxShadow(
+                                  color: AppTheme.neon.withValues(alpha: 0.55),
+                                  blurRadius: 14,
+                                ),
+                              ]
+                            : null,
                       ),
                       child: Icon(
                         icon,
                         size: 24,
-                        color: selected ? AppTheme.ink : Colors.white,
+                        color: selected ? AppTheme.navy : Colors.white,
                       ),
                     ),
                   ),

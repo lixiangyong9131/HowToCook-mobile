@@ -35,6 +35,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     _parsed = parseRecipeMarkdown(widget.recipe.markdown);
     final len = _parsed.sections.isEmpty ? 1 : _parsed.sections.length;
     _tabs = TabController(length: len, vsync: this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final r = widget.recipe;
+      HistoryScope.of(context).addBrowse(
+        id: r.id,
+        title: r.title,
+        categoryId: r.categoryId,
+        categoryName: r.categoryName,
+      );
+    });
   }
 
   @override
@@ -108,7 +118,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   @override
   Widget build(BuildContext context) {
     final recipe = widget.recipe;
-    final color = categoryColors[recipe.categoryId] ?? AppTheme.lime;
+    final color = categoryColors[recipe.categoryId] ?? AppTheme.neon;
     final fav = FavoritesScope.of(context).isFavorite(recipe.id);
     final sections = _parsed.sections;
 
@@ -135,7 +145,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                         curve: Curves.easeOutBack,
                         child: Icon(
                           fav ? Icons.favorite : Icons.favorite_border,
-                          color: fav ? AppTheme.orange : Colors.white,
+                          color: fav ? AppTheme.coral : Colors.white,
                         ),
                       ),
                     ),
@@ -226,7 +236,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                         tabAlignment: TabAlignment.start,
                         labelColor: AppTheme.ink,
                         unselectedLabelColor: AppTheme.muted,
-                        indicatorColor: AppTheme.lime,
+                        indicatorColor: AppTheme.neon,
                         indicatorWeight: 3,
                         labelStyle: const TextStyle(
                           fontWeight: FontWeight.w800,
@@ -393,7 +403,7 @@ class _SectionBody extends StatelessWidget {
                   height: 8,
                   margin: const EdgeInsets.only(top: 6),
                   decoration: const BoxDecoration(
-                    color: AppTheme.lime,
+                    color: AppTheme.neon,
                     shape: BoxShape.circle,
                   ),
                 ),

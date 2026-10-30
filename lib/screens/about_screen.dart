@@ -1,10 +1,133 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/recipe_repository.dart';
+import '../services/update_service.dart';
 import '../theme/app_theme.dart';
+import 'categories_screen.dart';
 
-class AboutScreen extends StatelessWidget {
+class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
+
+  @override
+  State<AboutScreen> createState() => _AboutScreenState();
+}
+
+class _AboutScreenState extends State<AboutScreen> {
+  String _version = '…';
+  bool _checking = false;
+  double? _downloadProgress;
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((i) {
+      if (mounted) setState(() => _version = '${i.version}+${i.buildNumber}');
+    });
+  }
+
+  Future<void> _checkUpdate() async {
+    if (_checking) return;
+    setState(() {
+      _checking = true;
+      _downloadProgress = null;
+    });
+    try {
+      if (!kIsWeb && !Platform.isAndroid) {
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('检查更新'),
+            content: const Text(
+              'iOS / 非 Android 请到 GitHub Release 下载最新包：\n'
+              'https://github.com/lixiangyong9131/HowToCook-mobile/releases',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('知道了'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+
+      final latest = await UpdateService.checkLatest();
+      if (!mounted) return;
+      if (latest == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已是最新版本')),
+        );
+        return;
+      }
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('发现新版本 ${latest.tag}'),
+          content: SingleChildScrollView(
+            child: Text(
+              latest.body.trim().isEmpty
+                  ? '有新版本可用，是否下载并安装？'
+                  : latest.body,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('稍后'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.navy,
+                foregroundColor: AppTheme.neon,
+              ),
+              onPressed: latest.apkUrl == null
+                  ? null
+                  : () => Navigator.pop(ctx, true),
+              child: const Text('下载并安装'),
+            ),
+          ],
+        ),
+      );
+      if (go == true && latest.apkUrl != null) {
+        setState(() => _downloadProgress = 0);
+        final msg = await UpdateService.downloadAndInstall(
+          latest.apkUrl!,
+          onProgress: (p) {
+            if (mounted) setState(() => _downloadProgress = p);
+          },
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      } else if (latest.apkUrl == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('未找到 APK，请打开 ${latest.htmlUrl}'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('检查失败：$e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _checking = false;
+          _downloadProgress = null;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,18 +151,26 @@ class AboutScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
-                color: AppTheme.blackCard,
+                gradient: AppTheme.logoGradient,
                 borderRadius: BorderRadius.circular(AppTheme.radius),
+                boxShadow: AppTheme.softShadow(opacity: 0.2),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Text('👨‍💻🍳', style: TextStyle(fontSize: 36)),
-                  SizedBox(width: 14),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Image.asset(
+                      'assets/branding/app_icon_512.png',
+                      width: 64,
+                      height: 64,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           '程序员做饭指南',
                           style: TextStyle(
                             color: Colors.white,
@@ -47,11 +178,11 @@ class AboutScreen extends StatelessWidget {
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                        SizedBox(height: 4),
+                        const SizedBox(height: 4),
                         Text(
-                          '版本 0.3.0 · 离线可用',
-                          style: TextStyle(
-                            color: AppTheme.lime,
+                          '版本 $_version · 离线可用',
+                          style: const TextStyle(
+                            color: Colors.white,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -62,9 +193,48 @@ class AboutScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
+            _ActionTile(
+              icon: Icons.grid_view_rounded,
+              title: '分类浏览',
+              subtitle: '叠卡展开动效入口',
+              color: AppTheme.purple,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const CategoriesScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            _ActionTile(
+              icon: Icons.system_update_rounded,
+              title: _checking ? '正在检查…' : '检查更新',
+              subtitle: _downloadProgress != null
+                  ? '下载中 ${(_downloadProgress! * 100).toStringAsFixed(0)}%'
+                  : '从 GitHub Release 拉取新 APK',
+              color: AppTheme.neon,
+              onTap: _checking ? null : _checkUpdate,
+              trailing: _downloadProgress != null
+                  ? SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        value: _downloadProgress,
+                        strokeWidth: 3,
+                        color: AppTheme.navy,
+                      ),
+                    )
+                  : _checking
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : null,
+            ),
+            const SizedBox(height: 14),
             _InfoCard(
               title: '菜谱来源与致谢',
-              accent: AppTheme.lime,
+              accent: AppTheme.neon,
               children: [
                 Text(db?.attribution ??
                     '菜谱内容来自 Anduin2017/HowToCook，致谢原作者与贡献者。'),
@@ -80,34 +250,98 @@ class AboutScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const _InfoCard(
-              title: '功能参考',
-              accent: AppTheme.lavender,
-              children: [
-                Text(
-                  '交互灵感参考微信小程序 LeeJim/HowToCookOnMiniprogram：'
-                  '分类浏览、搜索、分节详情（原料/计算/操作）、步骤引导、步骤计时、本地收藏。',
-                ),
-                SizedBox(height: 8),
-                SelectableText(
-                  'https://github.com/LeeJim/HowToCookOnMiniprogram',
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const _InfoCard(
               title: '本仓库',
-              accent: AppTheme.orange,
+              accent: AppTheme.coral,
               children: [
                 SelectableText(
                   'https://github.com/lixiangyong9131/HowToCook-mobile',
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'v0.3 视觉语言：圆角编辑风、浮动黑胶囊导航、石灰/薰衣草紫高对比动效。',
+                  'v0.4 视觉：Logo 紫→珊瑚渐变、霓虹绿强调、深蓝海军风；首页=搜索+历史+最近浏览。',
                 ),
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+
+  const _ActionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    this.onTap,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(AppTheme.radius),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppTheme.radius),
+            boxShadow: AppTheme.softShadow(opacity: 0.08),
+            border: Border.all(color: AppTheme.purple.withValues(alpha: 0.12)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.9),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: AppTheme.navy),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: AppTheme.muted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              trailing ??
+                  const Icon(Icons.chevron_right_rounded,
+                      color: AppTheme.muted),
+            ],
+          ),
         ),
       ),
     );
@@ -121,7 +355,7 @@ class _InfoCard extends StatelessWidget {
   const _InfoCard({
     required this.title,
     required this.children,
-    this.accent = AppTheme.lime,
+    this.accent = AppTheme.neon,
   });
 
   @override
@@ -132,7 +366,8 @@ class _InfoCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(AppTheme.radius),
-        border: Border.all(color: const Color(0xFFE8E8ED)),
+        boxShadow: AppTheme.softShadow(opacity: 0.08),
+        border: Border.all(color: AppTheme.purple.withValues(alpha: 0.12)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

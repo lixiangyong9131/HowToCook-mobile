@@ -32,7 +32,7 @@ class _SnapTimelineState extends State<SnapTimeline> {
   @override
   void initState() {
     super.initState();
-    _page = PageController(viewportFraction: 0.88);
+    _page = PageController(viewportFraction: 0.82);
   }
 
   @override
@@ -82,9 +82,9 @@ class _SnapTimelineState extends State<SnapTimeline> {
                 height: 10,
                 decoration: BoxDecoration(
                   color: done
-                      ? AppTheme.lime
+                      ? AppTheme.neon
                       : active
-                          ? AppTheme.ink
+                          ? AppTheme.navy
                           : const Color(0xFFD1D1D6),
                   borderRadius: BorderRadius.circular(99),
                 ),
@@ -135,18 +135,24 @@ class _SnapTimelineState extends State<SnapTimeline> {
                       padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
                       decoration: BoxDecoration(
                         color: active
-                            ? AppTheme.lime
+                            ? AppTheme.neon
                             : done
-                                ? AppTheme.lavender.withValues(alpha: 0.55)
+                                ? AppTheme.lavender.withValues(alpha: 0.65)
                                 : Colors.white,
                         borderRadius:
                             BorderRadius.circular(AppTheme.radius),
                         border: active
-                            ? null
-                            : Border.all(color: const Color(0xFFE5E5EA)),
+                            ? Border.all(color: AppTheme.navy, width: 3)
+                            : Border.all(color: AppTheme.purple.withValues(alpha: 0.18)),
                         boxShadow: active
-                            ? AppTheme.softShadow(opacity: 0.12)
-                            : null,
+                            ? [
+                                BoxShadow(
+                                  color: AppTheme.neon.withValues(alpha: 0.55),
+                                  blurRadius: 24,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ]
+                            : AppTheme.softShadow(opacity: 0.06),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -158,7 +164,7 @@ class _SnapTimelineState extends State<SnapTimeline> {
                                 style: TextStyle(
                                   fontSize: 28,
                                   fontWeight: FontWeight.w900,
-                                  color: AppTheme.ink.withValues(
+                                  color: AppTheme.navy.withValues(
                                     alpha: active ? 1 : 0.35,
                                   ),
                                 ),
@@ -166,7 +172,7 @@ class _SnapTimelineState extends State<SnapTimeline> {
                               const Spacer(),
                               if (done)
                                 const Icon(Icons.check_circle,
-                                    color: AppTheme.ink),
+                                    color: AppTheme.navy),
                             ],
                           ),
                           const SizedBox(height: 8),
@@ -196,7 +202,7 @@ class _SnapTimelineState extends State<SnapTimeline> {
                                         size: 18),
                                     label: Text(_fmt(dur)),
                                     style: TextButton.styleFrom(
-                                      foregroundColor: AppTheme.ink,
+                                      foregroundColor: AppTheme.navy,
                                     ),
                                   ),
                                 const Spacer(),
@@ -277,11 +283,11 @@ class _DashLinePainter extends CustomPainter {
       final isActive = i == active;
       final isDone = done.contains(i);
       final fill = isDone
-          ? AppTheme.lime
+          ? AppTheme.neon
           : isActive
-              ? AppTheme.blue
+              ? AppTheme.purple
               : Colors.white;
-      final stroke = isActive ? AppTheme.blue : const Color(0xFFC7C7CC);
+      final stroke = isActive ? AppTheme.purple : const Color(0xFFC7C7CC);
       canvas.drawCircle(
         Offset(x, yy.clamp(24, size.height - 24)),
         isActive ? 7 : 5,
