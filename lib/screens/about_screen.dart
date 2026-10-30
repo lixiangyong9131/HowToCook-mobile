@@ -20,6 +20,7 @@ class _AboutScreenState extends State<AboutScreen> {
   String _version = '…';
   bool _checking = false;
   double? _downloadProgress;
+  CachedApk? _cachedApk;
 
   @override
   void initState() {
@@ -27,6 +28,12 @@ class _AboutScreenState extends State<AboutScreen> {
     PackageInfo.fromPlatform().then((i) {
       if (mounted) setState(() => _version = '${i.version}+${i.buildNumber}');
     });
+    _refreshCachedApk();
+  }
+
+  Future<void> _refreshCachedApk() async {
+    final c = await UpdateService.cachedApk();
+    if (mounted) setState(() => _cachedApk = c);
   }
 
   Future<void> _checkUpdate() async {
@@ -89,22 +96,32 @@ class _AboutScreenState extends State<AboutScreen> {
               onPressed: latest.apkUrl == null
                   ? null
                   : () => Navigator.pop(ctx, true),
-              child: const Text('下载并安装'),
+              child: Text(
+                _cachedApk != null &&
+                        (_cachedApk!.tag == latest.tag ||
+                            _cachedApk!.url == (latest.apkUrl ?? ''))
+                    ? '继续安装'
+                    : '下载并安装',
+              ),
             ),
           ],
         ),
       );
       if (go == true && latest.apkUrl != null) {
         setState(() => _downloadProgress = 0);
+        // Reuses on-disk APK for this tag/url when present — no re-download.
         final msg = await UpdateService.downloadAndInstall(
           latest.apkUrl!,
+          tag: latest.tag,
           onProgress: (p) {
             if (mounted) setState(() => _downloadProgress = p);
           },
         );
         if (!mounted) return;
+        await _refreshCachedApk();
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg)),
+          SnackBar(content: Text(msg), duration: const Duration(seconds: 5)),
         );
       } else if (latest.apkUrl == null) {
         if (!mounted) return;
@@ -221,7 +238,9 @@ class _AboutScreenState extends State<AboutScreen> {
               title: _checking ? '正在检查…' : '检查更新',
               subtitle: _downloadProgress != null
                   ? '下载中 ${(_downloadProgress! * 100).toStringAsFixed(0)}%'
-                  : '从 GitHub Release 拉取新 APK',
+                  : (_cachedApk != null
+                      ? '已缓存 ${_cachedApk!.tag.isEmpty ? "安装包" : _cachedApk!.tag}，失败可继续安装'
+                      : '从 GitHub Release 拉取新 APK'),
               color: AppTheme.neon,
               onTap: _checking ? null : _checkUpdate,
               trailing: _downloadProgress != null

@@ -9,6 +9,7 @@ import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class UpdateInfo {
   final String tag; // e.g. v0.4.0
@@ -26,6 +27,23 @@ class UpdateInfo {
   });
 }
 
+/// Persisted download metadata so install can retry without re-downloading.
+class CachedApk {
+  final String path;
+  final String tag;
+  final String url;
+  final int bytes;
+
+  const CachedApk({
+    required this.path,
+    required this.tag,
+    required this.url,
+    required this.bytes,
+  });
+
+  File get file => File(path);
+}
+
 class UpdateService {
   static const repoApi =
       'https://api.github.com/repos/lixiangyong9131/HowToCook-mobile/releases/latest';
@@ -33,19 +51,22 @@ class UpdateService {
   static const _installerChannel =
       MethodChannel('com.howtocook.how_to_cook/installer');
 
+  static const _prefPath = 'update_apk_path';
+  static const _prefTag = 'update_apk_tag';
+  static const _prefUrl = 'update_apk_url';
+  static const _prefBytes = 'update_apk_bytes';
+
   static Future<PackageInfo> currentInfo() => PackageInfo.fromPlatform();
 
   /// Normalize tags like `v0.5.0`, `V0.5.0+6`, `release-0.5.0` → `0.5.0`.
   static String normalizeVersion(String raw) {
     var v = raw.trim();
     if (v.toLowerCase().startsWith('v')) v = v.substring(1);
-    v = v.split('+').first; // drop build
-    // Keep pre-release core before first hyphen if it looks like semver.
+    v = v.split('+').first;
     final m = RegExp(r'(\d+(?:\.\d+)*)').firstMatch(v);
     return m?.group(1) ?? v.trim();
   }
 
-  /// Returns newer release if available, else null.
   static Future<UpdateInfo?> checkLatest() async {
     final info = await PackageInfo.fromPlatform();
     late http.Response res;
@@ -104,7 +125,6 @@ class UpdateService {
     );
   }
 
-  /// Semver-ish compare: true if remote > local.
   static bool _isNewer(String remote, String local) {
     List<int> parse(String v) {
       final core = normalizeVersion(v);
@@ -126,33 +146,82 @@ class UpdateService {
     return false;
   }
 
-  /// Prefer temp/cache (FileProvider cache-path), then external-files.
+  /// Stable dir (support/files), FileProvider-friendly; not wiped like temp.
   static Future<Directory> _apkDir() async {
+    // Prefer app support (files) — survives longer than cache/temp.
     try {
-      final tmp = await getTemporaryDirectory();
-      final dir = Directory(p.join(tmp.path, 'updates'));
+      final support = await getApplicationSupportDirectory();
+      final dir = Directory(p.join(support.path, 'updates'));
       if (!await dir.exists()) await dir.create(recursive: true);
       return dir;
     } catch (_) {}
     try {
-      final ext = await getExternalStorageDirectory();
-      if (ext != null) {
-        final dir = Directory(p.join(ext.path, 'updates'));
-        if (!await dir.exists()) await dir.create(recursive: true);
-        return dir;
-      }
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory(p.join(docs.path, 'updates'));
+      if (!await dir.exists()) await dir.create(recursive: true);
+      return dir;
     } catch (_) {}
-    final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(docs.path, 'updates'));
+    final tmp = await getTemporaryDirectory();
+    final dir = Directory(p.join(tmp.path, 'updates'));
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
+  }
+
+  static Future<void> _persistCache({
+    required String path,
+    required String tag,
+    required String url,
+    required int bytes,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefPath, path);
+    await prefs.setString(_prefTag, tag);
+    await prefs.setString(_prefUrl, url);
+    await prefs.setInt(_prefBytes, bytes);
+  }
+
+  static Future<void> clearCachedApk({bool deleteFile = true}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final path = prefs.getString(_prefPath);
+    await prefs.remove(_prefPath);
+    await prefs.remove(_prefTag);
+    await prefs.remove(_prefUrl);
+    await prefs.remove(_prefBytes);
+    if (deleteFile && path != null) {
+      try {
+        final f = File(path);
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
+  }
+
+  /// Valid on-disk APK for [tag] / [url] if still present.
+  static Future<CachedApk?> cachedApk({String? tag, String? url}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final path = prefs.getString(_prefPath);
+    final savedTag = prefs.getString(_prefTag) ?? '';
+    final savedUrl = prefs.getString(_prefUrl) ?? '';
+    final bytes = prefs.getInt(_prefBytes) ?? 0;
+    if (path == null || path.isEmpty || bytes < 5 * 1024 * 1024) return null;
+    if (tag != null && tag.isNotEmpty && savedTag.isNotEmpty && tag != savedTag) {
+      return null;
+    }
+    if (url != null && url.isNotEmpty && savedUrl.isNotEmpty && url != savedUrl) {
+      return null;
+    }
+    final file = File(path);
+    if (!await file.exists()) return null;
+    final len = await file.length();
+    // Allow small FS rounding; reject truncated files.
+    if (len < bytes * 0.98 || len < 5 * 1024 * 1024) return null;
+    if (!await _looksLikeApk(file)) return null;
+    return CachedApk(path: path, tag: savedTag, url: savedUrl, bytes: bytes);
   }
 
   static Future<bool> _looksLikeApk(File file) async {
     final raf = await file.open();
     try {
       final magic = await raf.read(4);
-      // ZIP / APK local file header: PK\x03\x04
       return magic.length >= 4 &&
           magic[0] == 0x50 &&
           magic[1] == 0x4b &&
@@ -163,63 +232,109 @@ class UpdateService {
     }
   }
 
-  /// Launch system installer via FileProvider MethodChannel; fall back to OpenFilex.
+  /// Install a local APK (no download). Keeps file on failure for retry.
+  static Future<String> installCachedApk(File file) async {
+    if (!await file.exists()) {
+      await clearCachedApk(deleteFile: false);
+      return '本地安装包不存在，请重新下载';
+    }
+    if (!await _looksLikeApk(file)) {
+      return '本地文件不是有效 APK，请清除后重新下载';
+    }
+    return _launchInstaller(file);
+  }
+
+  /// Launch system installer via FileProvider MethodChannel; fall back carefully.
   static Future<String> _launchInstaller(File file) async {
+    if (!await file.exists()) {
+      // Root cause of the old 「安装包丢失」 toast: OpenFilex fileNotFound after
+      // channel failure, often because temp/cache path was wiped or wrong.
+      return '安装包路径无效（文件不存在）。已保留下载记录，请点「继续安装」或重新下载';
+    }
+
     try {
       final status = await _installerChannel.invokeMethod<String>(
         'installApk',
-        {'path': file.path},
+        {'path': file.absolute.path},
       );
       switch (status) {
         case 'launched':
         case 'session_committed':
-          return '已调起安装程序，请按系统提示完成安装';
+          return '已调起安装程序，请按系统提示完成安装（包仍保留，失败可继续安装）';
         case 'need_permission':
-          return '请先允许「安装未知应用」，返回 App 后再次点「下载并安装」';
+          return '请先允许「安装未知应用」，返回后点「继续安装」（无需重新下载）';
         default:
           if (status != null && status.isNotEmpty) {
             return '安装状态：$status';
           }
       }
     } on PlatformException catch (e) {
-      // Fall through to OpenFilex.
       debugPrint('installApk channel failed: ${e.code} ${e.message}');
+      // Prefer surfacing native error over OpenFilex false "file missing".
+      if (e.code == 'install_failed' &&
+          (e.message?.contains('file_not_found') ?? false)) {
+        return '原生安装找不到文件：${file.path}。请重新下载';
+      }
+      // Fall through to OpenFilex only if file still on disk.
     } catch (e) {
       debugPrint('installApk channel error: $e');
     }
 
+    if (!await file.exists()) {
+      return '安装包在调起过程中丢失，请重新下载';
+    }
+
     final result = await OpenFilex.open(
-      file.path,
+      file.absolute.path,
       type: 'application/vnd.android.package-archive',
     );
     switch (result.type) {
       case ResultType.done:
         return '已调起安装程序，请按系统提示完成安装';
       case ResultType.noAppToOpen:
-        return '无法打开安装程序。请在系统设置中允许「安装未知应用」，或手动安装：${file.path}';
+        return '无法打开安装程序。请允许「安装未知应用」，或手动安装：${file.path}';
       case ResultType.permissionDenied:
         try {
           await _installerChannel.invokeMethod('openInstallPermissionSettings');
         } catch (_) {}
-        return '没有安装权限。请到系统设置 → 应用 → 允许安装未知应用后重试';
+        return '没有安装权限。请到设置允许安装未知应用后点「继续安装」';
       case ResultType.fileNotFound:
+        // OpenFilex often reports this even when File.exists — path/provider issue.
+        final stillThere = await file.exists();
+        if (stillThere) {
+          return '系统安装器无法读取安装包（文件仍在）。请到「我的」再点继续安装，或允许安装未知应用';
+        }
+        await clearCachedApk(deleteFile: false);
         return '安装包丢失，请重新下载';
       case ResultType.error:
-        return '打开安装包失败：${result.message}';
+        return '打开安装包失败：${result.message}（可点继续安装重试，无需重下）';
     }
   }
 
-  /// Download APK and open installer (Android). Returns user-facing message.
+  /// Download APK if needed, then install. Reuses cache for same [tag]/[url].
   static Future<String> downloadAndInstall(
     String apkUrl, {
+    String? tag,
     void Function(double progress)? onProgress,
+    bool forceRedownload = false,
   }) async {
     if (kIsWeb || !Platform.isAndroid) {
       return '请到 GitHub Release 下载安装包';
     }
 
+    final label = tag ?? 'update';
+
+    if (!forceRedownload) {
+      final cached = await cachedApk(tag: tag, url: apkUrl);
+      if (cached != null) {
+        onProgress?.call(1);
+        return installCachedApk(cached.file);
+      }
+    }
+
     final dir = await _apkDir();
     final file = File(p.join(dir.path, 'how_to_cook_update.apk'));
+    // Only delete when we are about to replace with a fresh download.
     if (await file.exists()) {
       try {
         await file.delete();
@@ -227,19 +342,19 @@ class UpdateService {
     }
 
     final client = http.Client();
+    var received = 0;
+    var total = 0;
     try {
       final req = http.Request('GET', Uri.parse(apkUrl));
       req.headers['User-Agent'] = 'HowToCook-mobile';
       req.headers['Accept'] = '*/*';
-      // ~85MB APK: allow long transfer; incomplete files still start with PK..
       final streamed =
           await client.send(req).timeout(const Duration(minutes: 10));
       if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
         throw Exception('下载失败（HTTP ${streamed.statusCode}）');
       }
-      final total = streamed.contentLength ?? 0;
+      total = streamed.contentLength ?? 0;
       final sink = file.openWrite();
-      var received = 0;
       await for (final chunk in streamed.stream) {
         sink.add(chunk);
         received += chunk.length;
@@ -247,13 +362,16 @@ class UpdateService {
       }
       await sink.flush();
       await sink.close();
-      // Incomplete download is a known install-failure root cause: magic still PK.
       if (total > 0 && received < total) {
-        try { await file.delete(); } catch (_) {}
+        try {
+          await file.delete();
+        } catch (_) {}
         throw Exception('下载不完整（$received / $total 字节），请重试');
       }
       if (received < 5 * 1024 * 1024) {
-        try { await file.delete(); } catch (_) {}
+        try {
+          await file.delete();
+        } catch (_) {}
         throw Exception('下载的文件过小（$received 字节），可能不是完整 APK');
       }
     } on SocketException catch (e) {
@@ -265,8 +383,19 @@ class UpdateService {
     }
 
     if (!await _looksLikeApk(file)) {
+      try {
+        await file.delete();
+      } catch (_) {}
       throw Exception('下载内容不是有效 APK（文件头校验失败），请稍后重试或到 GitHub 手动下载');
     }
+
+    // Persist until install succeeds or user clears — never delete on install fail.
+    await _persistCache(
+      path: file.absolute.path,
+      tag: label,
+      url: apkUrl,
+      bytes: received,
+    );
 
     return _launchInstaller(file);
   }

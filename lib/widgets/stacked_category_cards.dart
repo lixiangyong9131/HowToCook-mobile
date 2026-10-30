@@ -3,6 +3,8 @@ import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 
 import '../models/recipe.dart';
+import '../services/process_image_service.dart';
+import '../services/recipe_repository.dart';
 import '../theme/app_theme.dart';
 import '../theme/doodle_icons.dart';
 
@@ -456,6 +458,15 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     );
   }
 
+  /// First recipe in [cat] that has a process image (for cover crop).
+  Recipe? _coverRecipe(CategoryInfo cat) {
+    final list = RecipeRepository.instance.byCategory(cat.id);
+    for (final r in list) {
+      if (ProcessImageService.instance.hasImage(r)) return r;
+    }
+    return list.isEmpty ? null : list.first;
+  }
+
   Widget _cardBody(
     CategoryInfo cat,
     int paletteIndex, {
@@ -468,10 +479,45 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     final count = widget.counts[cat.id] ?? 0;
     final blur = 10.0 + elevation * 0.5;
     final yOff = 4.0 + elevation * 0.35;
+    final cover = _coverRecipe(cat);
+    final asset = cover == null
+        ? null
+        : ProcessImageService.instance.assetPathFor(cover);
+    final remote = cover == null
+        ? null
+        : ProcessImageService.instance.remoteUrlFor(cover);
+
+    Widget? bg;
+    if (asset != null) {
+      bg = Image.asset(
+        asset,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        // ~50px down from process-image top (food band), width fills card.
+        alignment: const Alignment(0, -0.82),
+        filterQuality: FilterQuality.medium,
+        gaplessPlayback: true,
+        errorBuilder: (_, __, ___) => const SizedBox.expand(),
+      );
+    } else if (remote != null && remote.isNotEmpty) {
+      bg = Image.network(
+        remote,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        alignment: const Alignment(0, -0.82),
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (_, __, ___) => const SizedBox.expand(),
+        headers: const {
+          'User-Agent': 'HowToCook-mobile/0.6.16',
+          'Accept': 'image/jpeg,image/*;q=0.8',
+        },
+      );
+    }
 
     return Container(
       height: _cardH,
-      padding: const EdgeInsets.symmetric(horizontal: 18),
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(AppTheme.radius),
@@ -491,40 +537,87 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
           ),
         ],
       ),
-      child: Row(
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          Container(
-            width: 56,
-            height: 56,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: dark ? 0.18 : 0.55),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: DoodleIcons.categoryIcon(cat.id, size: 40),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              cat.name,
-              style: TextStyle(
-                color: fg,
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
+          if (bg != null) bg,
+          // Scrim so title stays readable over food photo.
+          if (bg != null)
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.55),
+                    Colors.black.withValues(alpha: 0.25),
+                    Colors.black.withValues(alpha: 0.45),
+                  ],
+                ),
               ),
             ),
-          ),
-          Text(
-            '$count',
-            style: TextStyle(
-              color: fg.withValues(alpha: 0.9),
-              fontSize: 32,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.5,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(
+                      alpha: bg != null ? 0.22 : (dark ? 0.18 : 0.55),
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: DoodleIcons.categoryIcon(cat.id, size: 40),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    cat.name,
+                    style: TextStyle(
+                      color: bg != null ? Colors.white : fg,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      shadows: bg != null
+                          ? const [
+                              Shadow(
+                                color: Colors.black54,
+                                blurRadius: 8,
+                                offset: Offset(0, 1),
+                              ),
+                            ]
+                          : null,
+                    ),
+                  ),
+                ),
+                Text(
+                  '$count',
+                  style: TextStyle(
+                    color: (bg != null ? Colors.white : fg)
+                        .withValues(alpha: 0.95),
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                    shadows: bg != null
+                        ? const [
+                            Shadow(
+                              color: Colors.black54,
+                              blurRadius: 8,
+                              offset: Offset(0, 1),
+                            ),
+                          ]
+                        : null,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
+
 }

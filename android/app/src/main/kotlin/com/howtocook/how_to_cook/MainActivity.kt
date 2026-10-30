@@ -78,9 +78,13 @@ class MainActivity : FlutterActivity() {
      */
     private fun installApk(path: String): String {
         val src = File(path)
-        if (!src.exists() || src.length() < 1024L * 1024L) {
+        Log.i(tag, "installApk request path=$path exists=${src.exists()} len=${if (src.exists()) src.length() else -1}")
+        if (!src.exists()) {
+            throw IllegalStateException("file_not_found:$path")
+        }
+        if (src.length() < 1024L * 1024L) {
             throw IllegalStateException(
-                "file_not_found_or_too_small:${src.length()}",
+                "file_too_small:${src.length()}",
             )
         }
 
@@ -91,10 +95,17 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // Always install from app cache — covered by filepaths <cache-path>.
+        // Copy into cacheDir (FileProvider <cache-path>) unless already there.
         val destDir = File(cacheDir, "updates").apply { mkdirs() }
         val apk = File(destDir, "how_to_cook_update.apk")
-        src.copyTo(apk, overwrite = true)
+        if (src.canonicalPath != apk.canonicalPath) {
+            src.copyTo(apk, overwrite = true)
+        }
+        if (!apk.exists() || apk.length() < 1024L * 1024L) {
+            throw IllegalStateException(
+                "cache_copy_failed:${apk.length()}",
+            )
+        }
         Log.i(tag, "install from ${apk.absolutePath} size=${apk.length()}")
 
         return try {
