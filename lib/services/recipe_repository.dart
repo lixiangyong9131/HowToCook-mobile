@@ -10,6 +10,8 @@ class RecipeRepository {
 
   RecipeDatabase? _db;
 
+  RecipeDatabase? get db => _db;
+
   Future<RecipeDatabase> load() async {
     if (_db != null) return _db!;
     final raw = await rootBundle.loadString('assets/recipes_db.json');
@@ -21,6 +23,16 @@ class RecipeRepository {
     final db = _db;
     if (db == null) return const [];
     return db.recipes.where((r) => r.categoryId == categoryId).toList();
+  }
+
+  Recipe? byId(String id) {
+    final db = _db;
+    if (db == null) return null;
+    try {
+      return db.recipes.firstWhere((r) => r.id == id);
+    } catch (_) {
+      return null;
+    }
   }
 
   List<Recipe> search(String query) {

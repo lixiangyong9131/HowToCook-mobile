@@ -6,9 +6,15 @@
 
 ## 功能
 
-- 中文界面：分类列表、搜索、菜谱详情
+交互参考微信小程序 [LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)，并做成更精致的 Flutter Material 3 界面：
+
+- 首页：左侧分类侧栏 + 菜谱卡片（编号 / 难度 / 收藏标记）
+- 搜索：圆角搜索框，结果带分类标签
+- 详情：渐变头图、分节 Tab（原料 / 计算 / 操作等）、步骤「下一步」引导、步骤内嵌计时器
+- 收藏：本地持久化（SharedPreferences），「我的收藏」一键回看
+- 我的：致谢 Anduin2017/HowToCook、许可与仓库信息
 - Android + iOS 工程（含 `ios/`）
-- 完全离线浏览（当前版本未内置步骤图片，以文本为主）
+- 完全离线浏览（文本菜谱打包进 App；步骤配图未内置）
 
 ## 本地运行（Flutter）
 

@@ -1,34 +1,51 @@
 import 'package:flutter/material.dart';
 
-import 'screens/home_screen.dart';
+import 'screens/shell_screen.dart';
+import 'services/favorites_store.dart';
+import 'services/recipe_repository.dart';
+import 'theme/app_theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const HowToCookApp());
+  await RecipeRepository.instance.load();
+  final favorites = FavoritesStore();
+  await favorites.load();
+  runApp(HowToCookApp(favorites: favorites));
 }
 
 class HowToCookApp extends StatelessWidget {
-  const HowToCookApp({super.key});
+  final FavoritesStore favorites;
+  const HowToCookApp({super.key, required this.favorites});
 
   @override
   Widget build(BuildContext context) {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFFE65100),
-      brightness: Brightness.light,
-    );
-    return MaterialApp(
-      title: '程序员做饭指南',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: scheme,
-        useMaterial3: true,
-        appBarTheme: AppBarTheme(
-          backgroundColor: scheme.primary,
-          foregroundColor: scheme.onPrimary,
-          centerTitle: true,
-        ),
+    return FavoritesScope(
+      store: favorites,
+      child: ListenableBuilder(
+        listenable: favorites,
+        builder: (context, _) {
+          return MaterialApp(
+            title: '程序员做饭指南',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.light(),
+            home: const ShellScreen(),
+          );
+        },
       ),
-      home: const HomeScreen(),
     );
   }
+}
+
+class FavoritesScope extends InheritedWidget {
+  final FavoritesStore store;
+  const FavoritesScope({super.key, required this.store, required super.child});
+
+  static FavoritesStore of(BuildContext context) {
+    final scope = context.dependOnInheritedWidgetOfExactType<FavoritesScope>();
+    assert(scope != null, 'FavoritesScope not found');
+    return scope!.store;
+  }
+
+  @override
+  bool updateShouldNotify(FavoritesScope oldWidget) => store != oldWidget.store;
 }
