@@ -28,7 +28,7 @@ class CircularRevealRoute<T> extends PageRouteBuilder<T> {
                 reverseCurve: Curves.easeInCubic,
               ),
               center: center,
-              veilColor: veilColor ?? const Color(0xFF8B7CFF),
+              veilColor: veilColor ?? const Color(0xFF1A1F3A),
               child: child,
             );
           },

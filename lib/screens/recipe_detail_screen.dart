@@ -34,7 +34,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   Duration? _total;
   double _favScale = 1;
   bool _hasProcessImage = false;
-  bool _stepsTextExpanded = false;
 
   @override
   void initState() {
@@ -81,48 +80,47 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     return null;
   }
 
-  /// Merge 「计算」 useful lines into 「必备原料和工具」.
+  /// Merge calc amounts into each ingredient line (鸡蛋 2 个), not dumped below.
   RecipeSection? _buildMergedIngredients() {
     final ing = _ingredientSection;
     final calc = _calcSection;
     if (ing == null && calc == null) return null;
+
+    final calcLines = <String>[];
+    if (calc != null) {
+      calcLines.addAll(calc.items);
+      final body = calc.body.trim();
+      if (body.isNotEmpty) {
+        for (final line in body.split('\n')) {
+          final t = line.trim();
+          if (t.isNotEmpty) calcLines.add(t);
+        }
+      }
+    }
+
     if (ing == null) {
+      final fused = fuseIngredientsWithAmounts(
+        ingredients: const [],
+        calcLines: calcLines,
+      );
       return RecipeSection(
         title: '必备原料和工具',
-        body: calc!.body,
-        items: calc.items,
+        body: '',
+        items: fused.isNotEmpty ? fused : calc!.items,
         isSteps: false,
       );
     }
-    if (calc == null) return ing;
 
-    final items = <String>[...ing.items];
-    final calcBits = <String>[];
-    final body = calc.body.trim();
-    if (body.isNotEmpty) {
-      for (final line in body.split('\n')) {
-        final t = line.trim();
-        if (t.isEmpty) continue;
-        // Skip the generic "确定份数" boilerplate; keep concrete amounts.
-        if (t.contains('每次制作前需要确定计划做几份')) continue;
-        if (t == '总量：' || t == '总量:') continue;
-        calcBits.add(t.replaceFirst(RegExp(r'^[-*+]\s+'), ''));
-      }
-    }
-    for (final it in calc.items) {
-      final t = it.trim();
-      if (t.isEmpty) continue;
-      if (!items.contains(t) && !calcBits.contains(t)) calcBits.add(t);
-    }
-    // Prefer showing calc amounts as annotated lines under ingredients.
-    if (calcBits.isNotEmpty) {
-      items.add('—— 用量参考 ——');
-      items.addAll(calcBits);
-    }
+    if (calcLines.isEmpty) return ing;
+
+    final fused = fuseIngredientsWithAmounts(
+      ingredients: ing.items,
+      calcLines: calcLines,
+    );
     return RecipeSection(
       title: ing.title.isNotEmpty ? ing.title : '必备原料和工具',
-      body: ing.body,
-      items: items,
+      body: '',
+      items: fused,
       isSteps: false,
     );
   }
@@ -318,14 +316,13 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                         avatar: const Icon(
                           Icons.smart_display_rounded,
                           size: 18,
-                          color: Color(0xFFFF5A8A),
+                          color: AppTheme.coral,
                         ),
                         label: const Text('视频做法'),
                         onPressed: _openVideo,
                         backgroundColor: Colors.white,
                         side: BorderSide(
-                          color: const Color(0xFFFF5A8A)
-                              .withValues(alpha: 0.35),
+                          color: AppTheme.coral.withValues(alpha: 0.35),
                         ),
                       ),
                     ),
@@ -396,40 +393,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   Widget _buildTabBody(_DetailTab t) {
     switch (t.kind) {
       case _TabKind.cook:
-        // Module 1: process image first; text steps only as expandable backup.
+        // Module 1: process image only (文字步骤备用已移除).
         if (_hasProcessImage) {
-          return Column(
-            children: [
-              Expanded(
-                child: ProcessImageViewer(
-                  loader: () => ProcessImageService.instance
-                      .cachedFileFor(widget.recipe),
-                ),
-              ),
-              if (t.section != null && t.section!.items.isNotEmpty)
-                Material(
-                  color: Colors.white,
-                  child: ExpansionTile(
-                    initiallyExpanded: _stepsTextExpanded,
-                    onExpansionChanged: (v) =>
-                        setState(() => _stepsTextExpanded = v),
-                    title: const Text(
-                      '文字步骤（备用）',
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    children: [
-                      SizedBox(
-                        height: 280,
-                        child: SnapTimeline(
-                          steps: t.section!.items,
-                          durationOf: extractStepDuration,
-                          onPickTimer: (d) => _openTimerPicker(d),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
+          return ProcessImageViewer(
+            loader: () =>
+                ProcessImageService.instance.cachedFileFor(widget.recipe),
           );
         }
         if (t.section != null && t.section!.items.isNotEmpty) {

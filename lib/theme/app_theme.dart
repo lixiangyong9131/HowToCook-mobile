@@ -1,23 +1,28 @@
 import 'package:flutter/material.dart';
 
-/// Logo-derived palette: purple→coral gradient, neon green, deep navy, lilac.
+/// Compact palette aligned with the bottom bar: navy + cream + coral accent.
+/// No purple.
 class AppTheme {
-  static const purple = Color(0xFF8B7CFF);
-  static const coral = Color(0xFFFF7A85);
-  static const neon = Color(0xFF39FF5A);
   static const navy = Color(0xFF1A1F3A);
-  static const lilac = Color(0xFFF3F0FF);
+  static const charcoal = Color(0xFF2A3148);
+  static const cream = Color(0xFFFFF6EB);
+  static const coral = Color(0xFFFF8A65);
+  static const softCoral = Color(0xFFFFD6C4);
+  static const neon = Color(0xFF39FF5A); // dock active / success accent
   static const card = Colors.white;
-  static const muted = Color(0xFF8B8798);
+  static const muted = Color(0xFF8A8794);
   static const ink = navy;
-  static const bg = lilac;
+  static const bg = cream;
   static const accent = neon;
   static const blackCard = navy;
-  static const lime = neon; // alias — old widgets used lime
-  static const lavender = Color(0xFFC9C0FF);
+  static const lime = neon;
   static const orange = coral;
-  static const blue = Color(0xFF5B8CFF);
-  static const seed = purple;
+  static const blue = Color(0xFF4A7C9B); // muted teal-blue, not purple
+  // Backward-compat aliases (former purple → coral / navy)
+  static const purple = coral;
+  static const lilac = cream;
+  static const lavender = softCoral;
+  static const seed = navy;
 
   static const radius = 22.0;
   static const radiusSm = 16.0;
@@ -25,23 +30,23 @@ class AppTheme {
   static const logoGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [purple, coral],
+    colors: [cream, softCoral],
   );
 
   static List<BoxShadow> softShadow({double opacity = 0.12}) => [
         BoxShadow(
-          color: purple.withValues(alpha: opacity),
+          color: navy.withValues(alpha: opacity * 0.55),
           blurRadius: 22,
           offset: const Offset(0, 10),
         ),
         BoxShadow(
-          color: Colors.black.withValues(alpha: opacity * 0.35),
+          color: Colors.black.withValues(alpha: opacity * 0.25),
           blurRadius: 8,
           offset: const Offset(0, 2),
         ),
       ];
 
-  /// White card with purple-tinted shadow + optional left accent bar.
+  /// White card with soft navy-tinted shadow.
   static BoxDecoration logoCard({
     Color? color,
     double radius = radius,
@@ -52,18 +57,15 @@ class AppTheme {
       color: color ?? card,
       borderRadius: BorderRadius.circular(radius),
       boxShadow: softShadow(),
-      border: Border.all(color: purple.withValues(alpha: 0.10)),
-      gradient: accentBar
-          ? null
-          : null,
+      border: Border.all(color: navy.withValues(alpha: 0.08)),
     );
   }
 
   static ThemeData light() {
     final scheme = ColorScheme.fromSeed(
-      seedColor: purple,
+      seedColor: navy,
       brightness: Brightness.light,
-      surface: lilac,
+      surface: cream,
       primary: navy,
       secondary: neon,
       tertiary: coral,
@@ -71,7 +73,7 @@ class AppTheme {
     return ThemeData(
       colorScheme: scheme,
       useMaterial3: true,
-      scaffoldBackgroundColor: lilac,
+      scaffoldBackgroundColor: cream,
       textTheme: const TextTheme(
         displayLarge: TextStyle(
           fontSize: 40,
@@ -105,7 +107,7 @@ class AppTheme {
         ),
       ),
       appBarTheme: const AppBarTheme(
-        backgroundColor: lilac,
+        backgroundColor: cream,
         foregroundColor: navy,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -123,7 +125,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(radius),
         ),
       ),
-      dividerColor: purple.withValues(alpha: 0.12),
+      dividerColor: navy.withValues(alpha: 0.10),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: neon,
         foregroundColor: navy,
@@ -145,18 +147,18 @@ const categoryEmojis = <String, String>{
   'vegetable_dish': '🥬',
 };
 
-/// Logo-aligned colorful palette for stacked category cards.
+/// Warm navy/coral/cream tones only (no purple).
 const categoryCardPalette = <Color>[
-  Color(0xFF8B7CFF), // purple
-  Color(0xFFFF7A85), // coral
-  Color(0xFF39FF5A), // neon
   Color(0xFF1A1F3A), // navy
-  Color(0xFFC9C0FF), // lavender
-  Color(0xFFFFB4A8), // soft coral
-  Color(0xFF5B8CFF), // blue
-  Color(0xFFFFD166), // warm
+  Color(0xFFFF8A65), // coral
+  Color(0xFF39FF5A), // neon
+  Color(0xFFFFD6C4), // soft coral
+  Color(0xFF4A7C9B), // muted teal
+  Color(0xFFFFB4A8), // peach
+  Color(0xFF2A3148), // charcoal
+  Color(0xFFFFD166), // warm gold
   Color(0xFF7CFFB2), // mint
-  Color(0xFFFF8FB8), // pink
+  Color(0xFFFFA07A), // light coral
 ];
 
 Color categoryAccent(String id, int index) {
@@ -168,13 +170,13 @@ bool isDarkCard(Color c) {
 }
 
 const categoryColors = <String, Color>{
-  'aquatic': Color(0xFF5B8CFF),
-  'breakfast': Color(0xFFFF7A85),
-  'condiment': Color(0xFFC9C0FF),
+  'aquatic': Color(0xFF4A7C9B),
+  'breakfast': Color(0xFFFF8A65),
+  'condiment': Color(0xFFFFD166),
   'dessert': Color(0xFFFFB4A8),
   'drink': Color(0xFF7CFFB2),
   'meat_dish': Color(0xFF1A1F3A),
-  'semi-finished': Color(0xFF8B7CFF),
+  'semi-finished': Color(0xFFFFA07A),
   'soup': Color(0xFFFFD166),
   'staple': Color(0xFF39FF5A),
   'vegetable_dish': Color(0xFF39FF5A),

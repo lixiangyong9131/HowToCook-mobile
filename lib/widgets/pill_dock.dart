@@ -3,12 +3,13 @@ import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
 
-/// Navy pill dock with neon green active indicator.
+/// Full-width bottom navigation bar (flush to screen bottom).
 class PillDock extends StatelessWidget {
   final int index;
   final ValueChanged<int> onChanged;
   final List<IconData> icons;
   final List<IconData>? selectedIcons;
+  final List<String> labels;
 
   const PillDock({
     super.key,
@@ -24,69 +25,68 @@ class PillDock extends StatelessWidget {
       Icons.favorite,
       Icons.person,
     ],
+    this.labels = const ['首页', '收藏', '我的'],
   });
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    return Material(
+      color: AppTheme.navy,
+      elevation: 12,
+      shadowColor: AppTheme.navy.withValues(alpha: 0.45),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(0, 0, 0, 14),
-        child: Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppTheme.navy,
-              borderRadius: BorderRadius.circular(999),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.purple.withValues(alpha: 0.35),
-                  blurRadius: 24,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(icons.length, (i) {
-                final selected = i == index;
-                final icon =
-                    selected ? (selectedIcons?[i] ?? icons[i]) : icons[i];
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: GestureDetector(
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      onChanged(i);
-                    },
-                    behavior: HitTestBehavior.opaque,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 240),
-                      curve: Curves.easeOutCubic,
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: selected ? AppTheme.neon : Colors.transparent,
-                        shape: BoxShape.circle,
-                        boxShadow: selected
-                            ? [
-                                BoxShadow(
-                                  color: AppTheme.neon.withValues(alpha: 0.55),
-                                  blurRadius: 14,
-                                ),
-                              ]
-                            : null,
+        padding: EdgeInsets.only(bottom: bottom),
+        child: SizedBox(
+          height: 64,
+          width: double.infinity,
+          child: Row(
+            children: List.generate(icons.length, (i) {
+              final selected = i == index;
+              final icon =
+                  selected ? (selectedIcons?[i] ?? icons[i]) : icons[i];
+              final label = i < labels.length ? labels[i] : '';
+              return Expanded(
+                child: InkWell(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    onChanged(i);
+                  },
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        width: 48,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? AppTheme.neon
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Icon(
+                          icon,
+                          size: 22,
+                          color: selected ? AppTheme.navy : Colors.white70,
+                        ),
                       ),
-                      child: Icon(
-                        icon,
-                        size: 24,
-                        color: selected ? AppTheme.navy : Colors.white,
+                      const SizedBox(height: 2),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight:
+                              selected ? FontWeight.w800 : FontWeight.w600,
+                          color: selected ? AppTheme.neon : Colors.white60,
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                );
-              }),
-            ),
+                ),
+              );
+            }),
           ),
         ),
       ),

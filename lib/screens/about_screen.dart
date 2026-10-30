@@ -161,7 +161,7 @@ class _AboutScreenState extends State<AboutScreen> {
             Container(
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
-                gradient: AppTheme.logoGradient,
+                color: AppTheme.navy,
                 borderRadius: BorderRadius.circular(AppTheme.radius),
                 boxShadow: AppTheme.softShadow(opacity: 0.2),
               ),
@@ -208,7 +208,7 @@ class _AboutScreenState extends State<AboutScreen> {
               icon: Icons.grid_view_rounded,
               title: '分类浏览',
               subtitle: '叠卡展开动效入口',
-              color: AppTheme.purple,
+              color: AppTheme.coral,
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const CategoriesScreen()),
@@ -262,7 +262,7 @@ class _AboutScreenState extends State<AboutScreen> {
             const SizedBox(height: 12),
             const _InfoCard(
               title: '整图做法来源',
-              accent: AppTheme.purple,
+              accent: AppTheme.navy,
               children: [
                 Text(
                   '部分菜品「整图做法」来自 king-jingxiang/HowToCook（AI 信息图），按需下载缓存，不打包进 APK。',
@@ -276,11 +276,23 @@ class _AboutScreenState extends State<AboutScreen> {
             const SizedBox(height: 12),
             const _InfoCard(
               title: '视频做法',
-              accent: Color(0xFFFF5A8A),
+              accent: AppTheme.coral,
               children: [
                 Text(
                   '「视频做法」搜索 B 站相关教程（优先 eat.ryanuo.cc 接口，失败则官方搜索 API，再不行打开 B 站搜索页）。',
                 ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const _InfoCard(
+              title: '应用图标',
+              accent: AppTheme.coral,
+              children: [
+                Text(
+                  '启动图标中的面条 / 厨师帽涂鸦来自 Icons8 Doodle 风格图标（icons8.com），按 Icons8 免费许可使用并致谢。',
+                ),
+                SizedBox(height: 8),
+                SelectableText('https://icons8.com/icons/set/food--style-doodle'),
               ],
             ),
             const SizedBox(height: 12),
@@ -293,7 +305,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 ),
                 SizedBox(height: 8),
                 Text(
-                  'v0.5.1：详情模块重排、应用内播放视频、修复导航与检查更新。',
+                  'v0.6.0：Icons8 食物涂鸦图标、底部栏铺满、配色去紫、原料用量合并、视频播放修复。',
                 ),
               ],
             ),

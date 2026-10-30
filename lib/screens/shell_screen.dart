@@ -24,25 +24,18 @@ class _ShellScreenState extends State<ShellScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Keep bottom bar pinned when keyboard opens; search overlay handles inset.
     return Scaffold(
       backgroundColor: AppTheme.bg,
-      body: Stack(
+      resizeToAvoidBottomInset: false,
+      body: Column(
         children: [
-          // Content clears the floating dock.
-          Positioned.fill(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 72),
-              child: IndexedStack(index: _index, children: _pages),
-            ),
+          Expanded(
+            child: IndexedStack(index: _index, children: _pages),
           ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: PillDock(
-              index: _index,
-              onChanged: (i) => setState(() => _index = i),
-            ),
+          PillDock(
+            index: _index,
+            onChanged: (i) => setState(() => _index = i),
           ),
         ],
       ),

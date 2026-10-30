@@ -167,3 +167,176 @@ int? _cnToInt(String s) {
   }
   return total == 0 ? null : math.max(total, 1);
 }
+
+
+/// Fuse 「必备原料」 names with 「计算」 amounts into one line each.
+///
+/// Examples:
+///   鸡蛋 + `鸡蛋 1 个 *份数` → `鸡蛋 1 个`
+///   生抽 + `生抽 = 30 毫升` → `生抽 30 毫升`
+List<String> fuseIngredientsWithAmounts({
+  required List<String> ingredients,
+  required List<String> calcLines,
+}) {
+  final amounts = <_CalcAmount>[];
+  for (final raw in calcLines) {
+    final parsed = _parseCalcLine(raw);
+    if (parsed != null) amounts.add(parsed);
+  }
+
+  final used = <int>{};
+  final out = <String>[];
+
+  for (final ing in ingredients) {
+    final name = _ingredientKey(ing);
+    if (name.isEmpty) {
+      out.add(ing);
+      continue;
+    }
+    final idx = _bestAmountMatch(name, amounts, used);
+    if (idx == null) {
+      out.add(ing.trim());
+      continue;
+    }
+    used.add(idx);
+    final a = amounts[idx];
+    out.add(_formatFused(ing.trim(), a.amount));
+  }
+
+  // Orphan calc lines that look like concrete amounts (e.g. water not listed).
+  for (var i = 0; i < amounts.length; i++) {
+    if (used.contains(i)) continue;
+    final a = amounts[i];
+    if (a.amount.isEmpty) continue;
+    out.add('${a.name} ${a.amount}'.trim());
+  }
+  return out;
+}
+
+class _CalcAmount {
+  final String name;
+  final String amount;
+  const _CalcAmount(this.name, this.amount);
+}
+
+_CalcAmount? _parseCalcLine(String raw) {
+  var t = raw.trim();
+  if (t.isEmpty) return null;
+  t = t.replaceFirst(RegExp(r'^[-*+]\s+'), '');
+  if (t.contains('每次制作前需要确定计划做几份')) return null;
+  if (t == '总量：' || t == '总量:' || t == '每份：' || t == '每份:') return null;
+  if (t.startsWith('以下是') || t.startsWith('按比例')) return null;
+
+  // Strip trailing "* 份数" / "*份数"
+  t = t.replaceAll(RegExp(r'\s*\*\s*份数\s*$'), '');
+  t = t.replaceAll(RegExp(r'\s*×\s*份数\s*$'), '');
+
+  // NAME = AMOUNT
+  final eq = RegExp(r'^(.+?)\s*=\s*(.+)$').firstMatch(t);
+  if (eq != null) {
+    final name = eq.group(1)!.trim();
+    final amount = eq.group(2)!.trim();
+    if (name.isNotEmpty && amount.isNotEmpty) {
+      return _CalcAmount(_stripAlias(name), amount);
+    }
+  }
+
+  // NAME AMOUNT…  (amount starts with digit / 两 / 半 / 一…)
+  final spaced = RegExp(
+    r'^([^\d]+?)\s+(\d.*|两.+|半.+|[一二三四五六七八九十].+)$',
+  ).firstMatch(t);
+  if (spaced != null) {
+    final name = spaced.group(1)!.trim();
+    final amount = spaced.group(2)!.trim();
+    if (name.isNotEmpty && amount.isNotEmpty) {
+      return _CalcAmount(_stripAlias(name), amount);
+    }
+  }
+
+  return null;
+}
+
+String _stripAlias(String name) {
+  // "青蟹（别称：肉蟹）" → keep full for display keying via aliases below
+  return name.trim();
+}
+
+String _ingredientKey(String ing) {
+  var t = ing.trim();
+  t = t.replaceFirst(RegExp(r'^[-*+]\s+'), '');
+  // Prefer alias in parentheses if present: 青蟹（别称：肉蟹） → also match 肉蟹
+  return t;
+}
+
+List<String> _nameVariants(String raw) {
+  final out = <String>{};
+  var t = raw.trim();
+  out.add(t);
+  // strip （别称：xxx） / (别称:xxx) / （xxx）
+  final alias = RegExp(r'[（(]别称[：:]([^）)]+)[）)]').firstMatch(t);
+  if (alias != null) {
+    out.add(alias.group(1)!.trim());
+    t = t.replaceAll(alias.group(0)!, '').trim();
+    out.add(t);
+  }
+  final paren = RegExp(r'[（(]([^）)]+)[）)]').firstMatch(raw);
+  if (paren != null) {
+    out.add(paren.group(1)!.trim());
+    out.add(raw.replaceAll(paren.group(0)!, '').trim());
+  }
+  // also drop spaces
+  out.add(t.replaceAll(' ', ''));
+  return out.where((e) => e.isNotEmpty).toList();
+}
+
+int? _bestAmountMatch(
+  String ingredient,
+  List<_CalcAmount> amounts,
+  Set<int> used,
+) {
+  final variants = _nameVariants(ingredient);
+  // 1) exact / contains match preferring longer names
+  int? best;
+  var bestScore = -1;
+  for (var i = 0; i < amounts.length; i++) {
+    if (used.contains(i)) continue;
+    final n = amounts[i].name;
+    final nVars = _nameVariants(n);
+    for (final v in variants) {
+      for (final nv in nVars) {
+        var score = -1;
+        if (v == nv) {
+          score = 100 + v.length;
+        } else if (v.contains(nv) || nv.contains(v)) {
+          score = 50 + (v.length < nv.length ? v.length : nv.length);
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          best = i;
+        }
+      }
+    }
+  }
+  return bestScore >= 50 ? best : null;
+}
+
+String _formatFused(String ingredient, String amount) {
+  // If ingredient already contains a digit amount, keep as-is.
+  if (RegExp(r'\d').hasMatch(ingredient) &&
+      (ingredient.contains('g') ||
+          ingredient.contains('克') ||
+          ingredient.contains('个') ||
+          ingredient.contains('ml') ||
+          ingredient.contains('毫升'))) {
+    return ingredient;
+  }
+  // Prefer clean display name without long alias when amount present.
+  var name = ingredient;
+  final alias = RegExp(r'[（(]别称[：:][^）)]+[）)]').firstMatch(name);
+  if (alias != null) {
+    name = name.replaceAll(alias.group(0)!, '').trim();
+  }
+  // Avoid duplicating if amount already starts with name
+  if (amount.startsWith(name)) return amount;
+  return '$name $amount';
+}

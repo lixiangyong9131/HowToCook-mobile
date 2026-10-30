@@ -46,7 +46,7 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircularProgressIndicator(color: AppTheme.purple),
+                CircularProgressIndicator(color: AppTheme.navy),
                 SizedBox(height: 12),
                 Text('正在加载整图做法…',
                     style: TextStyle(color: AppTheme.muted)),
@@ -73,7 +73,7 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
                   if (widget.onFallbackSteps != null)
                     TextButton(
                       onPressed: widget.onFallbackSteps,
-                      child: const Text('查看文字步骤'),
+                      child: const Text('返回步骤'),
                     ),
                   TextButton(
                     onPressed: () => setState(() {

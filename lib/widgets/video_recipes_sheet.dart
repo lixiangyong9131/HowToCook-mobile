@@ -102,7 +102,7 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
                   ),
                 ),
                 Material(
-                  color: const Color(0xFFFF5A8A),
+                  color: AppTheme.coral,
                   borderRadius: BorderRadius.circular(999),
                   child: InkWell(
                     borderRadius: BorderRadius.circular(999),
@@ -144,7 +144,7 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: AppTheme.purple),
+            CircularProgressIndicator(color: AppTheme.navy),
             SizedBox(height: 12),
             Text('正在搜索 B 站视频…', style: TextStyle(color: AppTheme.muted)),
           ],
@@ -175,7 +175,7 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
       itemBuilder: (context, i) {
         final v = list[i];
         return Material(
-          color: const Color(0xFFF7F6FB),
+          color: AppTheme.cream,
           borderRadius: BorderRadius.circular(18),
           child: InkWell(
             borderRadius: BorderRadius.circular(18),
@@ -292,7 +292,7 @@ class _Empty extends StatelessWidget {
             const SizedBox(height: 14),
             FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFFF5A8A),
+                backgroundColor: AppTheme.coral,
                 foregroundColor: Colors.white,
               ),
               onPressed: onOpen,
