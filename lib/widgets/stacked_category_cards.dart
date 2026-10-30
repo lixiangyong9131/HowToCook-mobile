@@ -48,7 +48,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   static const _visibleBehind = 3;
   static const _visibleAbove = 3;
   /// Finger pixels per one card of [offset] (higher = silkier / less twitchy).
-  static const _pxPerCard = 92.0;
+  static const _pxPerCard = 118.0;
 
   late bool _expanded;
   late final AnimationController _fanCtrl;
@@ -190,19 +190,24 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
       setState(() => _offset = 0);
       return;
     }
-    // Light friction → silky 延迟滑动; no end clamps (infinite loop).
-    final friction = FrictionSimulation(0.055, _offset, velocity);
+    // Higher friction + softer spring → slower coast, less eye-strain.
+    // No end clamps (infinite loop).
+    final friction = FrictionSimulation(0.14, _offset, velocity);
     var predicted = friction.x(double.infinity);
     if (predicted.isNaN || predicted.isInfinite) {
-      predicted = _offset + velocity * 0.45;
+      predicted = _offset + velocity * 0.28;
     }
+    // Cap coast distance so a hard fling does not skip too many cards.
+    final maxJump = 2.6;
+    final delta = (predicted - _offset).clamp(-maxJump, maxJump);
+    predicted = _offset + delta;
     final target = predicted.round().toDouble();
 
-    // Softer spring = longer, smoother card morph between indices.
+    // Soft spring = gentle settle (less bounce / eye-strain).
     final spring = SpringDescription(
-      mass: 1.05,
-      stiffness: 42,
-      damping: 14.5,
+      mass: 1.25,
+      stiffness: 26,
+      damping: 13.5,
     );
     final sim = SpringSimulation(spring, _offset, target, velocity);
     _coastCtrl.animateWith(sim);
@@ -259,18 +264,6 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
             ],
           ],
         ),
-        const SizedBox(height: 6),
-        if (!_expanded)
-          Text(
-            widget.openOnSwipeSettle
-                ? '循环甩动叠卡 · 丝滑过渡后停稳打开 · 点按打开当前'
-                : '循环甩动叠卡 · 丝滑过渡后停稳 · 点按打开',
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.muted,
-            ),
-          ),
         const SizedBox(height: 10),
         AnimatedBuilder(
           animation: Listenable.merge([_fanCtrl, _coastCtrl]),

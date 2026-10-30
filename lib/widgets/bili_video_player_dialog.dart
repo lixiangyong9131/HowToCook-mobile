@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show Factory, kIsWeb;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -40,6 +42,13 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
   String? _error;
   /// 0 = official embed, 1 = m.bilibili
   int _mode = 0;
+  bool _alive = true;
+  final List<Timer> _nudgeTimers = [];
+
+  /// WebView owns all gestures — avoids nested-gesture deadlock with dialog
+  /// when tapping danmaku / fullscreen controls inside the player.
+  static final Set<Factory<OneSequenceGestureRecognizer>> _webGestures =
+      <Factory<OneSequenceGestureRecognizer>>{};
 
   String get _bvid => widget.video.bvid.trim();
 
@@ -86,41 +95,39 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
   }
 
   Future<void> _configureAndLoad() async {
-    await _controller.setJavaScriptMode(JavaScriptMode.unrestricted);
-    await _controller.setBackgroundColor(Colors.black);
-    await _controller.setUserAgent(_kMobileUa);
+    if (!_alive) return;
+    try {
+      await _controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      await _controller.setBackgroundColor(Colors.black);
+      await _controller.setUserAgent(_kMobileUa);
 
-    if (!kIsWeb && Platform.isAndroid) {
-      final platform = _controller.platform;
-      if (platform is AndroidWebViewController) {
-        await platform.setMediaPlaybackRequiresUserGesture(false);
-        await platform.setMixedContentMode(MixedContentMode.alwaysAllow);
-        AndroidWebViewController.enableDebugging(false);
+      if (!kIsWeb && Platform.isAndroid) {
+        final platform = _controller.platform;
+        if (platform is AndroidWebViewController) {
+          await platform.setMediaPlaybackRequiresUserGesture(false);
+          await platform.setMixedContentMode(MixedContentMode.alwaysAllow);
+          AndroidWebViewController.enableDebugging(false);
+        }
       }
-    }
 
-    await _controller.setNavigationDelegate(
-      NavigationDelegate(
-        onPageStarted: (_) {
-          if (mounted) {
+      await _controller.setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (_) {
+            if (!_alive || !mounted) return;
             setState(() {
               _loading = true;
               _error = null;
             });
-          }
-        },
-        onPageFinished: (_) async {
-          if (!mounted) return;
-          setState(() => _loading = false);
-          // Autoplay nudge: muted play → click → delayed retries.
-          await _nudgeAutoplay();
-          Future<void>.delayed(const Duration(milliseconds: 450), _nudgeAutoplay);
-          Future<void>.delayed(const Duration(milliseconds: 1200), _nudgeAutoplay);
-          Future<void>.delayed(const Duration(milliseconds: 2200), _nudgeAutoplay);
-          // Soften mobile chrome for m.bilibili mode.
-          if (_mode == 1) {
-            try {
-              await _controller.runJavaScript('''
+          },
+          onPageFinished: (_) async {
+            if (!_alive || !mounted) return;
+            setState(() => _loading = false);
+            await _nudgeAutoplay();
+            _scheduleNudge(const Duration(milliseconds: 450));
+            _scheduleNudge(const Duration(milliseconds: 1200));
+            _scheduleNudge(const Duration(milliseconds: 2200));
+            if (_mode == 1) {
+              await _runJsSafe('''
 (function(){
   try {
     var s=document.createElement('style');
@@ -129,59 +136,74 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
   } catch(e) {}
 })();
 ''');
-            } catch (_) {}
-          }
-        },
-        onWebResourceError: (err) {
-          // Ignore subframe / CDN noise — only fail on main frame.
-          if (err.isForMainFrame != true) return;
-          if (!mounted) return;
-          setState(() {
-            _loading = false;
-            _error = err.description.isNotEmpty
-                ? err.description
-                : '播放页加载失败';
-          });
-        },
-        onHttpError: (err) {
-          final code = err.response?.statusCode;
-          if (code == null || code < 400) return;
-          // Only treat document-level failures as fatal.
-          final uri = err.response?.uri;
-          if (uri != null &&
-              !uri.host.contains('bilibili.com') &&
-              !uri.host.contains('bilivideo')) {
-            return;
-          }
-          if (!mounted) return;
-          // Soft: keep webview; show banner only for heavy failures.
-          if (code >= 500 || code == 404) {
+            }
+          },
+          onWebResourceError: (err) {
+            if (err.isForMainFrame != true) return;
+            if (!_alive || !mounted) return;
             setState(() {
               _loading = false;
-              _error = 'HTTP $code';
+              _error = err.description.isNotEmpty
+                  ? err.description
+                  : '播放页加载失败';
             });
-          }
-        },
-        onNavigationRequest: (req) {
-          final url = req.url;
-          if (url.startsWith('http://') || url.startsWith('https://')) {
-            // Block junk app-download interstitial hosts lightly by allowing navigate.
-            return NavigationDecision.navigate;
-          }
-          // Block bilibili:// and intent:// deep links out of the WebView.
-          return NavigationDecision.prevent;
-        },
-      ),
-    );
+          },
+          onHttpError: (err) {
+            final code = err.response?.statusCode;
+            if (code == null || code < 400) return;
+            final uri = err.response?.uri;
+            if (uri != null &&
+                !uri.host.contains('bilibili.com') &&
+                !uri.host.contains('bilivideo')) {
+              return;
+            }
+            if (!_alive || !mounted) return;
+            if (code >= 500 || code == 404) {
+              setState(() {
+                _loading = false;
+                _error = 'HTTP $code';
+              });
+            }
+          },
+          onNavigationRequest: (req) {
+            final url = req.url;
+            if (url.startsWith('http://') || url.startsWith('https://')) {
+              return NavigationDecision.navigate;
+            }
+            // Block bilibili:// and intent:// deep links out of the WebView.
+            return NavigationDecision.prevent;
+          },
+        ),
+      );
 
-    await _loadCurrent();
+      await _loadCurrent();
+    } catch (e) {
+      if (!_alive || !mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
   }
 
+  void _scheduleNudge(Duration delay) {
+    final t = Timer(delay, () {
+      if (!_alive) return;
+      _nudgeAutoplay();
+    });
+    _nudgeTimers.add(t);
+  }
+
+  Future<void> _runJsSafe(String js) async {
+    if (!_alive) return;
+    try {
+      await _controller.runJavaScript(js);
+    } catch (_) {}
+  }
 
   Future<void> _nudgeAutoplay() async {
-    if (!mounted) return;
-    try {
-      await _controller.runJavaScript("""
+    if (!_alive) return;
+    await _runJsSafe("""
 (function(){
   try {
     var v=document.querySelector('video');
@@ -204,10 +226,10 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
   } catch(e) {}
 })();
 """);
-    } catch (_) {}
   }
 
   Future<void> _loadCurrent() async {
+    if (!_alive || !mounted) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -215,7 +237,7 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
     try {
       await _controller.loadRequest(_headersUri, headers: _headers);
     } catch (e) {
-      if (!mounted) return;
+      if (!_alive || !mounted) return;
       setState(() {
         _loading = false;
         _error = e.toString();
@@ -224,7 +246,6 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
   }
 
   Future<void> _retry() async {
-    // Prefer embed first; if already embed and failed, flip to mobile.
     if (_mode == 0 && _error != null) {
       setState(() => _mode = 1);
     }
@@ -238,9 +259,26 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
 
   @override
   void dispose() {
-    try {
-      _controller.loadRequest(Uri.parse('about:blank'));
-    } catch (_) {}
+    _alive = false;
+    for (final t in _nudgeTimers) {
+      t.cancel();
+    }
+    _nudgeTimers.clear();
+    // Tear down safely: stop media via JS, clear delegate, blank page.
+    // Do not await — dispose must be sync; fire-and-forget with guards.
+    unawaited(() async {
+      try {
+        await _controller.runJavaScript(
+          "try{var v=document.querySelector('video');if(v){v.pause();v.src='';v.load();}}catch(e){}",
+        );
+      } catch (_) {}
+      try {
+        await _controller.setNavigationDelegate(NavigationDelegate());
+      } catch (_) {}
+      try {
+        await _controller.loadRequest(Uri.parse('about:blank'));
+      } catch (_) {}
+    }());
     super.dispose();
   }
 
@@ -301,7 +339,12 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
                 fit: StackFit.expand,
                 children: [
                   if (_error == null)
-                    WebViewWidget(controller: _controller)
+                    // Exclusive gestures → player (danmaku / fullscreen) never
+                    // fights Flutter dialog recognizers.
+                    WebViewWidget(
+                      controller: _controller,
+                      gestureRecognizers: _webGestures,
+                    )
                   else
                     Center(
                       child: Padding(

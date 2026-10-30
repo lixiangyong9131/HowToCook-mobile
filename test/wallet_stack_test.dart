@@ -30,7 +30,7 @@ void main() {
     expect(find.byType(PageView), findsNothing);
     expect(find.text('分类浏览'), findsOneWidget);
     expect(find.text('展开 ↓'), findsOneWidget);
-    expect(find.textContaining('循环甩动'), findsOneWidget);
+    expect(find.textContaining('循环甩动'), findsNothing);
   });
 
   testWidgets('fling can coast across cards (multi-card inertia)', (tester) async {

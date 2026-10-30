@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -28,6 +29,9 @@ class UpdateInfo {
 class UpdateService {
   static const repoApi =
       'https://api.github.com/repos/lixiangyong9131/HowToCook-mobile/releases/latest';
+
+  static const _installerChannel =
+      MethodChannel('com.howtocook.how_to_cook/installer');
 
   static Future<PackageInfo> currentInfo() => PackageInfo.fromPlatform();
 
@@ -122,6 +126,85 @@ class UpdateService {
     return false;
   }
 
+  /// Prefer app-external-files (open_filex allows without MANAGE_EXTERNAL_STORAGE).
+  static Future<Directory> _apkDir() async {
+    try {
+      final ext = await getExternalStorageDirectory();
+      if (ext != null) {
+        final dir = Directory(p.join(ext.path, 'updates'));
+        if (!await dir.exists()) await dir.create(recursive: true);
+        return dir;
+      }
+    } catch (_) {}
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory(p.join(docs.path, 'updates'));
+      if (!await dir.exists()) await dir.create(recursive: true);
+      return dir;
+    } catch (_) {}
+    return getTemporaryDirectory();
+  }
+
+  static Future<bool> _looksLikeApk(File file) async {
+    final raf = await file.open();
+    try {
+      final magic = await raf.read(4);
+      // ZIP / APK local file header: PK\x03\x04
+      return magic.length >= 4 &&
+          magic[0] == 0x50 &&
+          magic[1] == 0x4b &&
+          magic[2] == 0x03 &&
+          magic[3] == 0x04;
+    } finally {
+      await raf.close();
+    }
+  }
+
+  /// Launch system installer via FileProvider MethodChannel; fall back to OpenFilex.
+  static Future<String> _launchInstaller(File file) async {
+    try {
+      final status = await _installerChannel.invokeMethod<String>(
+        'installApk',
+        {'path': file.path},
+      );
+      switch (status) {
+        case 'launched':
+          return '已调起安装程序，请按系统提示完成安装';
+        case 'need_permission':
+          return '请先允许「安装未知应用」，返回后再次点击安装';
+        default:
+          if (status != null && status.isNotEmpty) {
+            return '安装状态：$status';
+          }
+      }
+    } on PlatformException catch (e) {
+      // Fall through to OpenFilex.
+      debugPrint('installApk channel failed: ${e.code} ${e.message}');
+    } catch (e) {
+      debugPrint('installApk channel error: $e');
+    }
+
+    final result = await OpenFilex.open(
+      file.path,
+      type: 'application/vnd.android.package-archive',
+    );
+    switch (result.type) {
+      case ResultType.done:
+        return '已调起安装程序，请按系统提示完成安装';
+      case ResultType.noAppToOpen:
+        return '无法打开安装程序。请在系统设置中允许「安装未知应用」，或手动安装：${file.path}';
+      case ResultType.permissionDenied:
+        try {
+          await _installerChannel.invokeMethod('openInstallPermissionSettings');
+        } catch (_) {}
+        return '没有安装权限。请到系统设置 → 应用 → 允许安装未知应用后重试';
+      case ResultType.fileNotFound:
+        return '安装包丢失，请重新下载';
+      case ResultType.error:
+        return '打开安装包失败：${result.message}';
+    }
+  }
+
   /// Download APK and open installer (Android). Returns user-facing message.
   static Future<String> downloadAndInstall(
     String apkUrl, {
@@ -131,18 +214,7 @@ class UpdateService {
       return '请到 GitHub Release 下载安装包';
     }
 
-    Directory dir;
-    try {
-      final ext = await getExternalCacheDirectories();
-      if (ext != null && ext.isNotEmpty) {
-        dir = ext.first;
-      } else {
-        dir = await getTemporaryDirectory();
-      }
-    } catch (_) {
-      dir = await getTemporaryDirectory();
-    }
-
+    final dir = await _apkDir();
     final file = File(p.join(dir.path, 'how_to_cook_update.apk'));
     if (await file.exists()) {
       try {
@@ -181,21 +253,10 @@ class UpdateService {
       client.close();
     }
 
-    final result = await OpenFilex.open(
-      file.path,
-      type: 'application/vnd.android.package-archive',
-    );
-    switch (result.type) {
-      case ResultType.done:
-        return '已调起安装程序，请按系统提示完成安装';
-      case ResultType.noAppToOpen:
-        return '无法打开安装程序。请在系统设置中允许「安装未知应用」，或手动安装：${file.path}';
-      case ResultType.permissionDenied:
-        return '没有安装权限。请到系统设置 → 应用 → 允许安装未知应用后重试';
-      case ResultType.fileNotFound:
-        return '安装包丢失，请重新下载';
-      case ResultType.error:
-        return '打开安装包失败：${result.message}';
+    if (!await _looksLikeApk(file)) {
+      throw Exception('下载内容不是有效 APK（文件头校验失败），请稍后重试或到 GitHub 手动下载');
     }
+
+    return _launchInstaller(file);
   }
 }

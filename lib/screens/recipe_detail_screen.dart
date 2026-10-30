@@ -35,6 +35,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   Duration? _total;
   double _favScale = 1;
   bool _hasProcessImage = false;
+  /// When true and a process image exists, show text steps instead.
+  bool _showTextSteps = false;
 
   @override
   void initState() {
@@ -420,17 +422,111 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   Widget _buildTabBody(_DetailTab t) {
     switch (t.kind) {
       case _TabKind.cook:
-        // Module 1: process image only — no image → 「暂无图片」 placeholder
-        // (not blank, not broken, not text-steps fallback).
-        if (_hasProcessImage) {
-          return SizedBox.expand(
-            child: ProcessImageViewer(
-              key: ValueKey('process-${widget.recipe.id}'),
-              loader: () =>
-                  ProcessImageService.instance.loadFor(widget.recipe),
-              remoteUrl:
-                  ProcessImageService.instance.remoteUrlFor(widget.recipe),
-            ),
+        // Module 1: process image when available; otherwise text steps.
+        // With image: floating 文字步骤 / 做法大图 toggle.
+        final steps = t.section;
+        final hasSteps = steps != null && steps.items.isNotEmpty;
+        if (_hasProcessImage && !_showTextSteps) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              ProcessImageViewer(
+                key: ValueKey('process-${widget.recipe.id}'),
+                loader: () =>
+                    ProcessImageService.instance.loadFor(widget.recipe),
+                remoteUrl:
+                    ProcessImageService.instance.remoteUrlFor(widget.recipe),
+              ),
+              if (hasSteps)
+                Positioned(
+                  right: 14,
+                  bottom: 18,
+                  child: Material(
+                    elevation: 3,
+                    borderRadius: BorderRadius.circular(999),
+                    color: Colors.white,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(999),
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _showTextSteps = true);
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.notes_rounded,
+                                size: 18, color: AppTheme.navy),
+                            SizedBox(width: 6),
+                            Text(
+                              '文字步骤',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.navy,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        }
+        if (steps != null && steps.items.isNotEmpty) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              _SectionBody(
+                section: steps,
+                isIngredient: false,
+                isSteps: true,
+                onPickTimer: _openTimerPicker,
+              ),
+              if (_hasProcessImage)
+                Positioned(
+                  right: 14,
+                  bottom: 18,
+                  child: Material(
+                    elevation: 3,
+                    borderRadius: BorderRadius.circular(999),
+                    color: AppTheme.navy,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(999),
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _showTextSteps = false);
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.image_outlined,
+                                size: 18, color: AppTheme.cream),
+                            SizedBox(width: 6),
+                            Text(
+                              '做法大图',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.cream,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           );
         }
         return const Center(
@@ -441,7 +537,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                   size: 48, color: AppTheme.muted),
               SizedBox(height: 12),
               Text(
-                '暂无图片',
+                '暂无步骤',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
@@ -450,7 +546,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               ),
               SizedBox(height: 6),
               Text(
-                '该菜谱暂无整图做法',
+                '该菜谱暂无整图做法与文字步骤',
                 style: TextStyle(fontSize: 13, color: AppTheme.muted),
               ),
             ],
