@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../main.dart';
 import '../models/recipe.dart';
 import '../theme/app_theme.dart';
-import 'dish_cover_thumb.dart';
 
 class RecipeCard extends StatelessWidget {
   final int index;
@@ -56,22 +55,20 @@ class RecipeCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                // Number slot → dish cover/logo when available; else keep index.
-                DishCoverThumb(
-                  recipe: recipe,
-                  size: 44,
-                  borderRadius: BorderRadius.circular(14),
-                  fallbackColor: accent,
-                  fallback: Container(
-                    alignment: Alignment.center,
+                Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
                     color: accent,
-                    child: Text(
-                      '$index',
-                      style: TextStyle(
-                        color: dark ? Colors.white : AppTheme.navy,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 16,
-                      ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    '$index',
+                    style: TextStyle(
+                      color: dark ? Colors.white : AppTheme.navy,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
                     ),
                   ),
                 ),

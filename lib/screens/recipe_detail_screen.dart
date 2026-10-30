@@ -294,95 +294,69 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                     ),
                   ],
                   flexibleSpace: FlexibleSpaceBar(
-                    background: Container(
-                      color: AppTheme.blackCard,
-                      padding: const EdgeInsets.fromLTRB(20, 88, 20, 20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: color,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                DoodleIcons.categoryIcon(
-                                  recipe.categoryId,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  recipe.categoryName,
-                                  style: TextStyle(
-                                    color: isDarkCard(color)
-                                        ? Colors.white
-                                        : AppTheme.ink,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          // Dish logo/cover in navy header (beside title), not a process strip.
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              DishCoverThumb(
-                                recipe: recipe,
-                                size: 64,
-                                borderRadius: BorderRadius.circular(16),
-                                fallbackColor: color.withValues(alpha: 0.35),
-                                fallback: Container(
-                                  alignment: Alignment.center,
-                                  color: color.withValues(alpha: 0.35),
-                                  child: DoodleIcons.categoryIcon(
-                                    recipe.categoryId,
-                                    size: 32,
-                                  ),
-                                ),
+                    background: DishHeaderBackdrop(
+                      recipe: recipe,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 88, 20, 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
                               ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _parsed.title,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 26,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: -0.6,
-                                        height: 1.1,
-                                      ),
+                              decoration: BoxDecoration(
+                                color: color,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  DoodleIcons.categoryIcon(
+                                    recipe.categoryId,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    recipe.categoryName,
+                                    style: TextStyle(
+                                      color: isDarkCard(color)
+                                          ? Colors.white
+                                          : AppTheme.ink,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12,
                                     ),
-                                    if (_parsed.difficulty != null) ...[
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        '难度 ${'★' * _parsed.difficulty!}${'☆' * (5 - _parsed.difficulty!)}',
-                                        style: TextStyle(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.75),
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              _parsed.title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 26,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.6,
+                                height: 1.1,
+                              ),
+                            ),
+                            if (_parsed.difficulty != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                '难度 ${'★' * _parsed.difficulty!}${'☆' * (5 - _parsed.difficulty!)}',
+                                style: TextStyle(
+                                  color:
+                                      Colors.white.withValues(alpha: 0.85),
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ],
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),

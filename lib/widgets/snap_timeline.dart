@@ -118,7 +118,7 @@ class _SnapTimelineState extends State<SnapTimeline>
     return LayoutBuilder(
       builder: (context, constraints) {
         _cardExtent =
-            math.min(240.0, math.max(180.0, constraints.maxHeight * 0.42));
+            math.min(196.0, math.max(148.0, constraints.maxHeight * 0.34));
         return NotificationListener<ScrollNotification>(
           onNotification: (n) {
             if (n is ScrollEndNotification) {
@@ -176,8 +176,8 @@ class _SnapTimelineState extends State<SnapTimeline>
                         duration: const Duration(milliseconds: 280),
                         child: Container(
                           margin: const EdgeInsets.symmetric(
-                            vertical: 8,
-                            horizontal: 6,
+                            vertical: 6,
+                            horizontal: 8,
                           ),
                           decoration: BoxDecoration(
                             color: active
@@ -208,7 +208,7 @@ class _SnapTimelineState extends State<SnapTimeline>
                             children: [
                               Padding(
                                 padding:
-                                    const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                                    const EdgeInsets.fromLTRB(12, 10, 12, 8),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -217,7 +217,7 @@ class _SnapTimelineState extends State<SnapTimeline>
                                         Text(
                                           (i + 1).toString().padLeft(2, '0'),
                                           style: TextStyle(
-                                            fontSize: 26,
+                                            fontSize: 21,
                                             fontWeight: FontWeight.w900,
                                             color: AppTheme.navy.withValues(
                                               alpha: active ? 1 : 0.35,
@@ -231,8 +231,8 @@ class _SnapTimelineState extends State<SnapTimeline>
                                             tooltip: '开始计时 ${_fmt(dur)}',
                                             padding: EdgeInsets.zero,
                                             constraints: const BoxConstraints(
-                                              minWidth: 36,
-                                              minHeight: 36,
+                                              minWidth: 32,
+                                              minHeight: 32,
                                             ),
                                             onPressed: () =>
                                                 _onClockTap(i, dur),
@@ -255,8 +255,8 @@ class _SnapTimelineState extends State<SnapTimeline>
                                         child: Text(
                                           text,
                                           style: TextStyle(
-                                            fontSize: 15,
-                                            height: 1.45,
+                                            fontSize: 13,
+                                            height: 1.4,
                                             fontWeight: active
                                                 ? FontWeight.w700
                                                 : FontWeight.w500,
@@ -273,7 +273,7 @@ class _SnapTimelineState extends State<SnapTimeline>
                                         child: Text(
                                           '建议 ${_fmt(dur)} · 点右上角时钟开始',
                                           style: TextStyle(
-                                            fontSize: 12,
+                                            fontSize: 11,
                                             fontWeight: FontWeight.w600,
                                             color: AppTheme.muted
                                                 .withValues(alpha: 0.9),
@@ -291,8 +291,8 @@ class _SnapTimelineState extends State<SnapTimeline>
                                         angle: -0.28,
                                         child: Container(
                                           padding: const EdgeInsets.symmetric(
-                                            horizontal: 14,
-                                            vertical: 8,
+                                            horizontal: 12,
+                                            vertical: 6,
                                           ),
                                           decoration: BoxDecoration(
                                             color: Colors.white
@@ -309,7 +309,7 @@ class _SnapTimelineState extends State<SnapTimeline>
                                           child: const Text(
                                             '计时已完成',
                                             style: TextStyle(
-                                              fontSize: 18,
+                                              fontSize: 15,
                                               fontWeight: FontWeight.w900,
                                               color: AppTheme.coral,
                                               letterSpacing: 1.2,

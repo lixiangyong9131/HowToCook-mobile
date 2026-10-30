@@ -4,74 +4,76 @@ import '../models/recipe.dart';
 import '../services/process_image_service.dart';
 import '../theme/app_theme.dart';
 
-/// Dish cover/logo from the process-image top (food photo), shown as a square
-/// thumb — for list number slots and detail navy header. Not a body strip.
-class DishCoverThumb extends StatelessWidget {
+/// Full-bleed header backdrop: top band of the process image (food photo
+/// above the text/steps card). Do not over-crop into the step text.
+class DishHeaderBackdrop extends StatelessWidget {
   final Recipe recipe;
-  final double size;
-  final BorderRadius? borderRadius;
-  final Widget? fallback;
-  final Color? fallbackColor;
+  final Widget? child;
 
-  const DishCoverThumb({
+  const DishHeaderBackdrop({
     super.key,
     required this.recipe,
-    this.size = 44,
-    this.borderRadius,
-    this.fallback,
-    this.fallbackColor,
+    this.child,
   });
+
+  static const _ua = {
+    'User-Agent': 'HowToCook-mobile/0.6.13',
+    'Accept': 'image/jpeg,image/*;q=0.8',
+  };
 
   @override
   Widget build(BuildContext context) {
-    final radius = borderRadius ?? BorderRadius.circular(14);
     final path = ProcessImageService.instance.assetPathFor(recipe);
     final remote = ProcessImageService.instance.remoteUrlFor(recipe);
 
-    Widget content;
+    Widget? image;
     if (path != null) {
-      content = Image.asset(
+      image = Image.asset(
         path,
         fit: BoxFit.cover,
-        // Top-center ≈ finished-dish photo on 9:16 process cards.
-        alignment: const Alignment(0, -0.92),
-        cacheWidth: (size * 3).round().clamp(64, 256),
+        // Top of 9:16 card = dish photo; avoid shifting into step text.
+        alignment: Alignment.topCenter,
+        width: double.infinity,
+        height: double.infinity,
         filterQuality: FilterQuality.medium,
         gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => _fallbackBox(),
+        errorBuilder: (_, __, ___) => const SizedBox.expand(),
       );
     } else if (remote != null && remote.isNotEmpty) {
-      content = Image.network(
+      image = Image.network(
         remote,
         fit: BoxFit.cover,
-        alignment: const Alignment(0, -0.92),
-        cacheWidth: (size * 3).round().clamp(64, 256),
+        alignment: Alignment.topCenter,
+        width: double.infinity,
+        height: double.infinity,
         filterQuality: FilterQuality.medium,
-        errorBuilder: (_, __, ___) => _fallbackBox(),
-        headers: const {
-          'User-Agent': 'HowToCook-mobile/0.6.12',
-          'Accept': 'image/jpeg,image/*;q=0.8',
-        },
+        headers: _ua,
+        errorBuilder: (_, __, ___) => const SizedBox.expand(),
       );
-    } else {
-      content = _fallbackBox();
     }
 
-    return ClipRRect(
-      borderRadius: radius,
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: content,
-      ),
-    );
-  }
-
-  Widget _fallbackBox() {
-    if (fallback != null) return fallback!;
-    return ColoredBox(
-      color: fallbackColor ?? AppTheme.softCoral,
-      child: const SizedBox.expand(),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const ColoredBox(color: AppTheme.blackCard),
+        if (image != null) image,
+        // Scrim so title/icons stay readable over the food photo.
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.45),
+                Colors.black.withValues(alpha: 0.55),
+                Colors.black.withValues(alpha: 0.72),
+              ],
+              stops: const [0.0, 0.55, 1.0],
+            ),
+          ),
+        ),
+        if (child != null) child!,
+      ],
     );
   }
 }

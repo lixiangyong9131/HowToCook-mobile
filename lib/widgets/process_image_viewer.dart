@@ -10,7 +10,7 @@ import '../theme/app_theme.dart';
 /// Zoomable full-process recipe card (9:16 AI infographic).
 ///
 /// Tap and committed 上滑 share one maximize route (slide-up morph).
-/// Dish cover/logo lives in list cards + detail navy header — not here.
+/// Fullscreen uses an opaque route + open-guard so dismiss sticks.
 class ProcessImageViewer extends StatefulWidget {
   final Future<ProcessImageBytes?> Function() loader;
   final String? remoteUrl;
@@ -30,10 +30,12 @@ class ProcessImageViewer extends StatefulWidget {
 class _ProcessImageViewerState extends State<ProcessImageViewer> {
   late Future<ProcessImageBytes?> _future;
   final _transform = TransformationController();
+  bool _routeOpen = false;
+  DateTime? _ignoreUntil;
 
-  bool get _isIdentity {
+  bool get _isNearIdentity {
     final scale = _transform.value.getMaxScaleOnAxis();
-    return (scale - 1.0).abs() < 0.08;
+    return scale < 1.25;
   }
 
   @override
@@ -60,42 +62,55 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
     setState(() => _future = widget.loader());
   }
 
-  /// Shared maximize path for tap and committed swipe-up fling.
-  void _maximize(Widget imageChild) {
-    if (!_isIdentity) {
-      final scale = _transform.value.getMaxScaleOnAxis();
-      if (scale > 1.25) return;
-    }
+  /// Single maximize path for tap and swipe-up fling.
+  Future<void> _maximize(Widget imageChild) async {
+    if (!mounted) return;
+    if (_routeOpen) return;
+    final until = _ignoreUntil;
+    if (until != null && DateTime.now().isBefore(until)) return;
+    if (!_isNearIdentity) return;
+
+    _routeOpen = true;
     HapticFeedback.lightImpact();
     _transform.value = Matrix4.identity();
-    Navigator.of(context).push(
-      PageRouteBuilder<void>(
-        opaque: false,
-        barrierColor: Colors.black87,
-        transitionDuration: const Duration(milliseconds: 340),
-        reverseTransitionDuration: const Duration(milliseconds: 260),
-        pageBuilder: (ctx, anim, sec) {
-          final curved = CurvedAnimation(
-            parent: anim,
-            curve: Curves.easeOutCubic,
-            reverseCurve: Curves.easeInCubic,
-          );
-          return FadeTransition(
-            opacity: curved,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, 0.22),
-                end: Offset.zero,
-              ).animate(curved),
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
-                child: _FullscreenProcessImage(image: imageChild),
+    try {
+      await Navigator.of(context, rootNavigator: true).push<void>(
+        PageRouteBuilder<void>(
+          opaque: true,
+          barrierDismissible: true,
+          barrierColor: Colors.black,
+          transitionDuration: const Duration(milliseconds: 340),
+          reverseTransitionDuration: const Duration(milliseconds: 260),
+          pageBuilder: (ctx, anim, sec) {
+            final curved = CurvedAnimation(
+              parent: anim,
+              curve: Curves.easeOutCubic,
+              reverseCurve: Curves.easeInCubic,
+            );
+            return FadeTransition(
+              opacity: curved,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.22),
+                  end: Offset.zero,
+                ).animate(curved),
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.92, end: 1).animate(curved),
+                  child: _FullscreenProcessImage(image: imageChild),
+                ),
               ),
-            ),
-          );
-        },
-      ),
-    );
+            );
+          },
+        ),
+      );
+    } finally {
+      _routeOpen = false;
+      // Absorb the closing tap / residual fling so we don't immediately reopen.
+      _ignoreUntil = DateTime.now().add(const Duration(milliseconds: 550));
+      if (mounted) {
+        _transform.value = Matrix4.identity();
+      }
+    }
   }
 
   Widget _placeholder() {
@@ -190,7 +205,7 @@ class _NetworkProcessImage extends StatelessWidget {
   final TransformationController transform;
   final VoidCallback onRetry;
   final VoidCallback? onFallbackSteps;
-  final void Function(Widget imageChild) onMaximize;
+  final Future<void> Function(Widget imageChild) onMaximize;
 
   const _NetworkProcessImage({
     required this.url,
@@ -208,7 +223,7 @@ class _NetworkProcessImage extends StatelessWidget {
       width: double.infinity,
       filterQuality: FilterQuality.high,
       headers: const {
-        'User-Agent': 'HowToCook-mobile/0.6.12',
+        'User-Agent': 'HowToCook-mobile/0.6.13',
         'Accept': 'image/jpeg,image/*;q=0.8',
       },
       loadingBuilder: (context, child, progress) {
@@ -251,7 +266,7 @@ class _NetworkProcessImage extends StatelessWidget {
   }
 }
 
-/// InteractiveViewer 上滑 browse; tap / upward fling → same maximize.
+/// InteractiveViewer browse; tap / upward fling → same [onMaximize].
 class _ZoomableImage extends StatefulWidget {
   final TransformationController transform;
   final Widget child;
@@ -268,10 +283,11 @@ class _ZoomableImage extends StatefulWidget {
 }
 
 class _ZoomableImageState extends State<_ZoomableImage> {
-  Offset? _pointerDown;
-  int? _pointerId;
+  Offset? _downPos;
+  int? _downPointer;
   DateTime? _downAt;
-  bool _moved = false;
+  double _maxMove = 0;
+  int _activePointers = 0;
 
   bool _isNearIdentity(Matrix4 m) {
     final scale = m.getMaxScaleOnAxis();
@@ -290,8 +306,8 @@ class _ZoomableImageState extends State<_ZoomableImage> {
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) {
-              // Full viewport for the 9:16 card — no logo strip stealing height
-              // (that previously clipped the bottom of the process image).
+              // Listener always observes pointers (arena-independent) so tap
+              // hits the same _fireMaximize as upward fling.
               return Listener(
                 behavior: HitTestBehavior.translucent,
                 onPointerDown: (e) {
@@ -299,50 +315,52 @@ class _ZoomableImageState extends State<_ZoomableImage> {
                       e.kind != ui.PointerDeviceKind.mouse) {
                     return;
                   }
-                  if (_pointerId != null) {
-                    _pointerDown = null;
-                    _moved = true;
+                  _activePointers++;
+                  if (_activePointers > 1) {
+                    _downPos = null;
+                    _maxMove = 999;
                     return;
                   }
-                  _pointerId = e.pointer;
-                  _pointerDown = e.position;
+                  _downPointer = e.pointer;
+                  _downPos = e.position;
                   _downAt = DateTime.now();
-                  _moved = false;
+                  _maxMove = 0;
                 },
                 onPointerMove: (e) {
-                  if (e.pointer != _pointerId) return;
-                  final start = _pointerDown;
-                  if (start == null) return;
-                  if ((e.position - start).distance > 14) {
-                    _moved = true;
-                  }
+                  if (e.pointer != _downPointer || _downPos == null) return;
+                  final d = (e.position - _downPos!).distance;
+                  if (d > _maxMove) _maxMove = d;
                 },
                 onPointerUp: (e) {
-                  if (e.pointer != _pointerId) return;
-                  final start = _pointerDown;
-                  final t0 = _downAt;
-                  final wasTap = !_moved &&
-                      start != null &&
-                      t0 != null &&
-                      DateTime.now().difference(t0) <
-                          const Duration(milliseconds: 400) &&
-                      (e.position - start).distance <= 14;
-                  _pointerId = null;
-                  _pointerDown = null;
-                  _downAt = null;
-                  if (wasTap) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) _fireMaximize();
-                    });
+                  if (e.pointer == _downPointer) {
+                    final start = _downPos;
+                    final t0 = _downAt;
+                    final move = _maxMove;
+                    final wasTap = start != null &&
+                        t0 != null &&
+                        _activePointers <= 1 &&
+                        move <= 28 &&
+                        DateTime.now().difference(t0) <
+                            const Duration(milliseconds: 450);
+                    _downPointer = null;
+                    _downPos = null;
+                    _downAt = null;
+                    if (wasTap) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) _fireMaximize();
+                      });
+                    }
                   }
+                  _activePointers = (_activePointers - 1).clamp(0, 10);
                 },
                 onPointerCancel: (e) {
-                  if (e.pointer == _pointerId) {
-                    _pointerId = null;
-                    _pointerDown = null;
+                  if (e.pointer == _downPointer) {
+                    _downPointer = null;
+                    _downPos = null;
                     _downAt = null;
-                    _moved = true;
+                    _maxMove = 999;
                   }
+                  _activePointers = (_activePointers - 1).clamp(0, 10);
                 },
                 child: InteractiveViewer(
                   transformationController: widget.transform,
@@ -352,7 +370,7 @@ class _ZoomableImageState extends State<_ZoomableImage> {
                   onInteractionEnd: (details) {
                     if (!_isNearIdentity(widget.transform.value)) return;
                     final v = details.velocity.pixelsPerSecond;
-                    if (v.dy < -700) {
+                    if (v.dy < -650) {
                       _fireMaximize();
                     }
                   },
@@ -360,7 +378,6 @@ class _ZoomableImageState extends State<_ZoomableImage> {
                     width: constraints.maxWidth,
                     height: constraints.maxHeight,
                     child: Padding(
-                      // Extra bottom inset so tips/footer of the card aren't clipped.
                       padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
                       child: Center(child: widget.child),
                     ),
@@ -398,6 +415,7 @@ class _FullscreenProcessImage extends StatefulWidget {
 
 class _FullscreenProcessImageState extends State<_FullscreenProcessImage> {
   final _transform = TransformationController();
+  bool _closing = false;
 
   @override
   void dispose() {
@@ -406,6 +424,8 @@ class _FullscreenProcessImageState extends State<_FullscreenProcessImage> {
   }
 
   void _close() {
+    if (_closing) return;
+    _closing = true;
     HapticFeedback.selectionClick();
     Navigator.of(context).maybePop();
   }
@@ -413,49 +433,69 @@ class _FullscreenProcessImageState extends State<_FullscreenProcessImage> {
   @override
   Widget build(BuildContext context) {
     final pad = MediaQuery.paddingOf(context);
-    return Material(
-      color: Colors.black,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          InteractiveViewer(
-            transformationController: _transform,
-            minScale: 0.5,
-            maxScale: 5,
-            child: SizedBox(
-              width: MediaQuery.sizeOf(context).width,
-              height: MediaQuery.sizeOf(context).height,
-              child: Center(child: widget.image),
-            ),
-          ),
-          Positioned(
-            top: pad.top + 8,
-            right: 12,
-            child: IconButton(
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.black54,
-                foregroundColor: Colors.white,
-              ),
-              tooltip: '关闭',
-              onPressed: _close,
-              icon: const Icon(Icons.close_rounded),
-            ),
-          ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: math.max(pad.bottom, 12) + 8,
-            child: Text(
-              '双指缩放 · 点关闭',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+    return PopScope(
+      canPop: true,
+      child: Material(
+        color: Colors.black,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Tap empty chrome / drag down to dismiss when near identity.
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragEnd: (d) {
+                final v = d.primaryVelocity ?? 0;
+                if (v > 600) _close();
+              },
+              child: InteractiveViewer(
+                transformationController: _transform,
+                minScale: 0.5,
+                maxScale: 5,
+                onInteractionEnd: (details) {
+                  final scale = _transform.value.getMaxScaleOnAxis();
+                  if (scale > 1.2) return;
+                  if (details.velocity.pixelsPerSecond.dy > 900) {
+                    _close();
+                  }
+                },
+                child: SizedBox(
+                  width: MediaQuery.sizeOf(context).width,
+                  height: MediaQuery.sizeOf(context).height,
+                  child: Center(child: widget.image),
+                ),
               ),
             ),
-          ),
-        ],
+            Positioned(
+              top: pad.top + 8,
+              right: 12,
+              child: Material(
+                color: Colors.black54,
+                shape: const CircleBorder(),
+                child: IconButton(
+                  tooltip: '关闭',
+                  onPressed: _close,
+                  icon: const Icon(Icons.close_rounded, color: Colors.white),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: math.max(pad.bottom, 12) + 8,
+              child: IgnorePointer(
+                child: Text(
+                  '双指缩放 · 下滑或点关闭',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
