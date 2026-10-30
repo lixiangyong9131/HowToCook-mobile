@@ -49,8 +49,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   static const _gap = 12.0;
   static const _visibleBehind = 3;
   static const _visibleAbove = 3;
-  /// Finger pixels per one card of [offset] (higher = silkier / less twitchy).
-  static const _pxPerCard = 78.0;
+  /// Finger pixels per one card of [offset] — Clock-wheel density (~itemExtent feel).
+  static const _pxPerCard = 64.0;
 
   late bool _expanded;
   late final AnimationController _fanCtrl;
@@ -62,6 +62,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   bool _dragging = false;
   /// 0 idle, 1 friction coast, 2 spring snap.
   int _coastPhase = 0;
+  /// Last integer slot that fired a scroll tick haptic (Clock-wheel style).
+  int _lastTick = 0;
 
   @override
   void initState() {
@@ -98,6 +100,15 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   void _onCoastTick() {
     if (!mounted || _dragging) return;
     setState(() => _offset = _coastCtrl.value);
+    _fireTickHaptic();
+  }
+
+  /// Apple Clock–style click each time the focus crosses a card slot.
+  void _fireTickHaptic() {
+    final tick = _offset.round();
+    if (tick == _lastTick) return;
+    _lastTick = tick;
+    HapticFeedback.selectionClick();
   }
 
   void _onCoastStatus(AnimationStatus status) {
@@ -116,10 +127,11 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
             : _lastSettled - 1.0;
       }
       _coastPhase = 2;
+      // Cupertino-ish snap: stiff spring, quick settle onto a slot.
       final spring = SpringDescription(
-        mass: 1.2,
-        stiffness: 22,
-        damping: 14,
+        mass: 1.0,
+        stiffness: 110,
+        damping: 18,
       );
       _coastCtrl.animateWith(
         SpringSimulation(spring, _offset, target, 0),
@@ -134,9 +146,11 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
       _offset = settled.toDouble();
       _coastCtrl.value = _offset;
     });
+    _lastTick = settled;
     if (settled != _lastSettled) {
       _lastSettled = settled;
-      HapticFeedback.selectionClick();
+      // Soft settle pulse after the last tick (Clock stops on a digit).
+      HapticFeedback.lightImpact();
       if (widget.openOnSwipeSettle) {
         widget.onOpen(widget.categories[settled]);
       }
@@ -187,6 +201,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     _dragging = true;
     _coastPhase = 0;
     _coastCtrl.stop();
+    _lastTick = _offset.round();
   }
 
   void _onVerticalDragUpdate(DragUpdateDetails d) {
@@ -196,6 +211,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     setState(() {
       _offset = _offset - d.delta.dy / _pxPerCard;
     });
+    _fireTickHaptic();
   }
 
   void _onVerticalDragEnd(DragEndDetails d) {
@@ -223,16 +239,16 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     // Two-phase: friction coast (delayed / silky) → soft spring snap.
     // Previously we only *predicted* with friction then sprang immediately,
     // so the delayed coast was never visible.
-    final coastVel = velocity * 1.85;
-    // Mild fling still advances ~1 card; strong fling coasts 1–2 extra.
+    // Clock wheel: short coast then hard snap (not a long free glide).
+    final coastVel = velocity * 1.35;
     var kick = coastVel;
-    if (kick.abs() < 0.8 && kick.abs() > 0.12) {
-      kick = kick.sign * 1.15;
-    } else if (kick.abs() >= 0.8 && kick.abs() < 2.2) {
-      kick = kick.sign * (kick.abs() + 1.0);
+    if (kick.abs() < 0.55 && kick.abs() > 0.08) {
+      kick = kick.sign * 0.95;
+    } else if (kick.abs() >= 0.55 && kick.abs() < 1.8) {
+      kick = kick.sign * (kick.abs() + 0.55);
     }
     _coastPhase = 1;
-    _coastCtrl.animateWith(FrictionSimulation(0.035, _offset, kick));
+    _coastCtrl.animateWith(FrictionSimulation(0.085, _offset, kick));
   }
 
   @override
@@ -458,13 +474,17 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     );
   }
 
-  /// First recipe in [cat] that has a process image (for cover crop).
+  /// Process-image cover for a category card.
+  /// Default: first recipe with an image. 汤与粥 (`soup`): 2nd (奶油蘑菇汤 band).
   Recipe? _coverRecipe(CategoryInfo cat) {
     final list = RecipeRepository.instance.byCategory(cat.id);
-    for (final r in list) {
-      if (ProcessImageService.instance.hasImage(r)) return r;
-    }
-    return list.isEmpty ? null : list.first;
+    final withImg = <Recipe>[
+      for (final r in list)
+        if (ProcessImageService.instance.hasImage(r)) r,
+    ];
+    if (withImg.isEmpty) return list.isEmpty ? null : list.first;
+    if (cat.id == 'soup' && withImg.length >= 2) return withImg[1];
+    return withImg.first;
   }
 
   Widget _cardBody(
@@ -510,7 +530,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
         filterQuality: FilterQuality.medium,
         errorBuilder: (_, __, ___) => const SizedBox.expand(),
         headers: const {
-          'User-Agent': 'HowToCook-mobile/0.6.16',
+          'User-Agent': 'HowToCook-mobile/0.6.17',
           'Accept': 'image/jpeg,image/*;q=0.8',
         },
       );
