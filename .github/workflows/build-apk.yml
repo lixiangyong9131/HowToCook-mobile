@@ -16,10 +16,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.35.7'
           cache: true
 
       - name: Pub get
@@ -49,6 +56,7 @@ jobs:
 
             - 安装包：`app-release.apk`（debug-signed / Flutter 默认 release 签名，适合试用）
             - 菜谱来源：[Anduin2017/HowToCook](https://github.com/Anduin2017/HowToCook)（Unlicense）
+            - UI 参考：[LeeJim/HowToCookOnMiniprogram](https://github.com/LeeJim/HowToCookOnMiniprogram)
             - 安装前请在系统设置中允许「未知来源」安装应用
           files: build/app/outputs/flutter-apk/app-release.apk
           draft: false
