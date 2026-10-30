@@ -37,6 +37,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   bool _hasProcessImage = false;
   /// When true and a process image exists, show text steps instead.
   bool _showTextSteps = false;
+  /// Step indices whose timer finished → stamped 「计时已完成」.
+  final Set<int> _timerDoneSteps = {};
+  /// Which step the running timer belongs to (null = app-bar / free timer).
+  int? _activeTimerStep;
 
   @override
   void initState() {
@@ -180,21 +184,33 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     if (mounted) setState(() => _favScale = 1);
   }
 
-  void _startTimer(Duration d) {
+  void _startTimer(Duration d, {int? stepIndex}) {
     _timer?.cancel();
     setState(() {
       _total = d;
       _remaining = d;
+      _activeTimerStep = stepIndex;
     });
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (_remaining == null) return;
       if (_remaining!.inSeconds <= 1) {
         t.cancel();
-        setState(() => _remaining = Duration.zero);
+        final step = _activeTimerStep;
+        setState(() {
+          _remaining = Duration.zero;
+          if (step != null) {
+            _timerDoneSteps.add(step);
+            _activeTimerStep = null;
+          }
+        });
         if (mounted) {
           HapticFeedback.heavyImpact();
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('⏰ 计时结束！')),
+            SnackBar(
+              content: Text(
+                step != null ? '⏰ 第 ${step + 1} 步计时完成' : '⏰ 计时结束！',
+              ),
+            ),
           );
         }
       } else {
@@ -208,15 +224,20 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     setState(() {
       _remaining = null;
       _total = null;
+      _activeTimerStep = null;
     });
   }
 
-  Future<void> _openTimerPicker([Duration? hint]) async {
+  Future<void> _openTimerPicker([Duration? hint, int? stepIndex]) async {
     final d = await showInertiaTimerPicker(
       context,
       initial: hint ?? const Duration(minutes: 5),
     );
-    if (d != null) _startTimer(d);
+    if (d != null) _startTimer(d, stepIndex: stepIndex);
+  }
+
+  void _startStepTimer(int stepIndex, Duration hint) {
+    _openTimerPicker(hint, stepIndex);
   }
 
   void _openVideo() {
@@ -487,6 +508,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                 isIngredient: false,
                 isSteps: true,
                 onPickTimer: _openTimerPicker,
+                onStartStepTimer: _startStepTimer,
+                timerCompletedSteps: _timerDoneSteps,
               ),
               if (_hasProcessImage)
                 Positioned(
@@ -585,7 +608,9 @@ class _SectionBody extends StatelessWidget {
   final RecipeSection section;
   final bool isIngredient;
   final bool isSteps;
-  final Future<void> Function([Duration? hint]) onPickTimer;
+  final Future<void> Function([Duration? hint, int? stepIndex]) onPickTimer;
+  final void Function(int stepIndex, Duration duration)? onStartStepTimer;
+  final Set<int> timerCompletedSteps;
   final VoidCallback? onAllIngredients;
 
   const _SectionBody({
@@ -593,6 +618,8 @@ class _SectionBody extends StatelessWidget {
     required this.isIngredient,
     required this.isSteps,
     required this.onPickTimer,
+    this.onStartStepTimer,
+    this.timerCompletedSteps = const {},
     this.onAllIngredients,
   });
 
@@ -604,7 +631,11 @@ class _SectionBody extends StatelessWidget {
         child: SnapTimeline(
           steps: section.items,
           durationOf: extractStepDuration,
-          onPickTimer: (d) => onPickTimer(d),
+          timerCompletedSteps: timerCompletedSteps,
+          onStartTimer: onStartStepTimer ??
+              (i, d) {
+                onPickTimer(d, i);
+              },
         ),
       );
     }

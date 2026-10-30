@@ -5,21 +5,27 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
-import 'squeeze_done_button.dart';
 
 /// Interaction 4 — Snap cards first, THEN draw timeline (never while scrolling).
+///
+/// No 「完成这一步」 button. Steps with a duration show a clock icon (top-right);
+/// when that step's timer finishes, the card is stamped 「计时已完成」.
 class SnapTimeline extends StatefulWidget {
   final List<String> steps;
   final ValueChanged<int>? onStepChanged;
-  final ValueChanged<Duration>? onPickTimer;
+  /// Start a timer for [stepIndex] with [duration].
+  final void Function(int stepIndex, Duration duration)? onStartTimer;
   final Duration? Function(String step)? durationOf;
+  /// Step indices whose timer has finished (stamped 「计时已完成」).
+  final Set<int> timerCompletedSteps;
 
   const SnapTimeline({
     super.key,
     required this.steps,
     this.onStepChanged,
-    this.onPickTimer,
+    this.onStartTimer,
     this.durationOf,
+    this.timerCompletedSteps = const {},
   });
 
   @override
@@ -31,8 +37,6 @@ class _SnapTimelineState extends State<SnapTimeline>
   late final ScrollController _scroll;
   int _index = 0;
   bool _scrolling = false;
-  final Set<int> _done = {};
-  final _doneKey = GlobalKey<SqueezeDoneButtonState>();
 
   late final AnimationController _drawCtrl;
   double _cardExtent = 220;
@@ -82,7 +86,7 @@ class _SnapTimelineState extends State<SnapTimeline>
     if (!_scroll.hasClients) return;
     final i = _nearestIndex();
     final target = i * _cardExtent;
-    if (( _scroll.offset - target).abs() > 0.5) {
+    if ((_scroll.offset - target).abs() > 0.5) {
       await _scroll.animateTo(
         target,
         duration: const Duration(milliseconds: 380),
@@ -96,31 +100,12 @@ class _SnapTimelineState extends State<SnapTimeline>
       _scrolling = false;
     });
     widget.onStepChanged?.call(i);
-    // Draw timeline ONLY after fully settled.
     _drawCtrl.forward(from: 0);
   }
 
-  void _completeCurrent() {
-    setState(() {
-      _done.add(_index);
-      if (_index < widget.steps.length - 1) {
-        _index++;
-      }
-    });
-    widget.onStepChanged?.call(_index);
-    _doneKey.currentState?.reset();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scroll.hasClients) return;
-      _scroll.animateTo(
-        _index * _cardExtent,
-        duration: const Duration(milliseconds: 420),
-        curve: Curves.easeOutCubic,
-      ).then((_) {
-        if (!mounted) return;
-        setState(() => _scrolling = false);
-        _drawCtrl.forward(from: 0);
-      });
-    });
+  void _onClockTap(int i, Duration dur) {
+    HapticFeedback.selectionClick();
+    widget.onStartTimer?.call(i, dur);
   }
 
   @override
@@ -132,11 +117,13 @@ class _SnapTimelineState extends State<SnapTimeline>
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        _cardExtent = math.min(240.0, math.max(180.0, constraints.maxHeight * 0.42));
+        _cardExtent =
+            math.min(240.0, math.max(180.0, constraints.maxHeight * 0.42));
         return NotificationListener<ScrollNotification>(
           onNotification: (n) {
             if (n is ScrollEndNotification) {
-              SchedulerBinding.instance.addPostFrameCallback((_) => _onScrollEnd());
+              SchedulerBinding.instance
+                  .addPostFrameCallback((_) => _onScrollEnd());
             }
             return false;
           },
@@ -152,7 +139,7 @@ class _SnapTimelineState extends State<SnapTimeline>
                       painter: _TimelinePainter(
                         count: steps.length,
                         active: _index,
-                        done: _done,
+                        timerDone: widget.timerCompletedSteps,
                         drawProgress: _scrolling ? 0 : _drawCtrl.value,
                         cardExtent: _cardExtent,
                         scrollOffset: _scroll.hasClients ? _scroll.offset : 0,
@@ -175,7 +162,7 @@ class _SnapTimelineState extends State<SnapTimeline>
                   itemBuilder: (context, i) {
                     final active = i == _index && !_scrolling;
                     final dimmed = i != _index;
-                    final done = _done.contains(i);
+                    final timerDone = widget.timerCompletedSteps.contains(i);
                     final text = steps[i]
                         .replaceAll(RegExp(r'!\[.*?\]\([^)]+\)'), '')
                         .trim();
@@ -192,11 +179,10 @@ class _SnapTimelineState extends State<SnapTimeline>
                             vertical: 8,
                             horizontal: 6,
                           ),
-                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
                           decoration: BoxDecoration(
                             color: active
                                 ? Colors.white
-                                : done
+                                : timerDone
                                     ? AppTheme.softCoral.withValues(alpha: 0.45)
                                     : Colors.white.withValues(alpha: 0.7),
                             borderRadius:
@@ -218,85 +204,122 @@ class _SnapTimelineState extends State<SnapTimeline>
                                   ]
                                 : AppTheme.softShadow(opacity: 0.05),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          child: Stack(
                             children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    (i + 1).toString().padLeft(2, '0'),
-                                    style: TextStyle(
-                                      fontSize: 26,
-                                      fontWeight: FontWeight.w900,
-                                      color: AppTheme.navy.withValues(
-                                        alpha: active ? 1 : 0.35,
-                                      ),
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  if (done)
-                                    const Icon(Icons.check_circle,
-                                        color: AppTheme.coral),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Expanded(
-                                child: SingleChildScrollView(
-                                  physics: const BouncingScrollPhysics(),
-                                  child: Text(
-                                    text,
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      height: 1.45,
-                                      fontWeight: active
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                      color: dimmed
-                                          ? AppTheme.muted
-                                          : AppTheme.navy,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              if (active) ...[
-                                const SizedBox(height: 4),
-                                Row(
+                              Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    if (dur != null)
-                                      TextButton.icon(
-                                        onPressed: () =>
-                                            widget.onPickTimer?.call(dur),
-                                        icon: const Icon(Icons.timer_outlined,
-                                            size: 18),
-                                        label: Text(_fmt(dur)),
-                                        style: TextButton.styleFrom(
-                                          foregroundColor: AppTheme.navy,
+                                    Row(
+                                      children: [
+                                        Text(
+                                          (i + 1).toString().padLeft(2, '0'),
+                                          style: TextStyle(
+                                            fontSize: 26,
+                                            fontWeight: FontWeight.w900,
+                                            color: AppTheme.navy.withValues(
+                                              alpha: active ? 1 : 0.35,
+                                            ),
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        // Clock only when this step has a timer.
+                                        if (dur != null)
+                                          IconButton(
+                                            tooltip: '开始计时 ${_fmt(dur)}',
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(
+                                              minWidth: 36,
+                                              minHeight: 36,
+                                            ),
+                                            onPressed: () =>
+                                                _onClockTap(i, dur),
+                                            icon: Icon(
+                                              timerDone
+                                                  ? Icons.alarm_on_rounded
+                                                  : Icons.schedule_rounded,
+                                              color: timerDone
+                                                  ? AppTheme.coral
+                                                  : AppTheme.navy,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Expanded(
+                                      child: SingleChildScrollView(
+                                        physics:
+                                            const BouncingScrollPhysics(),
+                                        child: Text(
+                                          text,
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            height: 1.45,
+                                            fontWeight: active
+                                                ? FontWeight.w700
+                                                : FontWeight.w500,
+                                            color: dimmed
+                                                ? AppTheme.muted
+                                                : AppTheme.navy,
+                                          ),
                                         ),
                                       ),
-                                    const Spacer(),
-                                    TextButton(
-                                      onPressed: () =>
-                                          widget.onPickTimer?.call(
-                                        dur ?? const Duration(minutes: 5),
-                                      ),
-                                      child: const Text('计时'),
                                     ),
+                                    if (active && dur != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 4),
+                                        child: Text(
+                                          '建议 ${_fmt(dur)} · 点右上角时钟开始',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppTheme.muted
+                                                .withValues(alpha: 0.9),
+                                          ),
+                                        ),
+                                      ),
                                   ],
                                 ),
-                                Align(
-                                  alignment: Alignment.center,
-                                  child: SizedBox(
-                                    width: 200,
-                                    child: SqueezeDoneButton(
-                                      key: _doneKey,
-                                      label: i == steps.length - 1
-                                          ? '全部完成'
-                                          : '完成这一步',
-                                      onCompleted: _completeCurrent,
+                              ),
+                              if (timerDone)
+                                Positioned.fill(
+                                  child: IgnorePointer(
+                                    child: Center(
+                                      child: Transform.rotate(
+                                        angle: -0.28,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 14,
+                                            vertical: 8,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white
+                                                .withValues(alpha: 0.92),
+                                            borderRadius:
+                                                BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: AppTheme.coral,
+                                              width: 2.5,
+                                            ),
+                                            boxShadow:
+                                                AppTheme.softShadow(opacity: 0.12),
+                                          ),
+                                          child: const Text(
+                                            '计时已完成',
+                                            style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w900,
+                                              color: AppTheme.coral,
+                                              letterSpacing: 1.2,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ],
                             ],
                           ),
                         ),
@@ -322,7 +345,7 @@ class _SnapTimelineState extends State<SnapTimeline>
 class _TimelinePainter extends CustomPainter {
   final int count;
   final int active;
-  final Set<int> done;
+  final Set<int> timerDone;
   final double drawProgress; // 0 while scrolling; 0→1 after settle
   final double cardExtent;
   final double scrollOffset;
@@ -330,7 +353,7 @@ class _TimelinePainter extends CustomPainter {
   _TimelinePainter({
     required this.count,
     required this.active,
-    required this.done,
+    required this.timerDone,
     required this.drawProgress,
     required this.cardExtent,
     required this.scrollOffset,
@@ -347,7 +370,6 @@ class _TimelinePainter extends CustomPainter {
       centers.add(y);
     }
 
-    // Track (faint) full line
     final track = Paint()
       ..color = AppTheme.navy.withValues(alpha: 0.12)
       ..strokeWidth = 2
@@ -360,11 +382,11 @@ class _TimelinePainter extends CustomPainter {
       );
     }
 
-    // Animated drawn segment top → active (only when settled)
     if (drawProgress > 0 && centers.isNotEmpty) {
       final endY = centers[active.clamp(0, centers.length - 1)];
       final startY = centers.first;
-      final drawnY = startY + (endY - startY) * Curves.easeOutCubic.transform(drawProgress);
+      final drawnY =
+          startY + (endY - startY) * Curves.easeOutCubic.transform(drawProgress);
       final glow = Paint()
         ..color = AppTheme.coral.withValues(alpha: 0.55)
         ..strokeWidth = 3.5
@@ -382,7 +404,7 @@ class _TimelinePainter extends CustomPainter {
       final y = centers[i];
       if (y < -20 || y > size.height + 20) continue;
       final isActive = i == active;
-      final isDone = done.contains(i);
+      final isDone = timerDone.contains(i);
       final lit = drawProgress > 0.15 && i <= active;
       final r = isActive ? 8.0 : 5.5;
       final fillC = isDone
@@ -406,7 +428,7 @@ class _TimelinePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _TimelinePainter old) =>
       old.active != active ||
-      old.done != done ||
+      old.timerDone != timerDone ||
       old.drawProgress != drawProgress ||
       old.scrollOffset != scrollOffset ||
       old.cardExtent != cardExtent ||

@@ -48,7 +48,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   static const _visibleBehind = 3;
   static const _visibleAbove = 3;
   /// Finger pixels per one card of [offset] (higher = silkier / less twitchy).
-  static const _pxPerCard = 118.0;
+  static const _pxPerCard = 100.0;
 
   late bool _expanded;
   late final AnimationController _fanCtrl;
@@ -190,26 +190,32 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
       setState(() => _offset = 0);
       return;
     }
-    // Higher friction + softer spring → slower coast, less eye-strain.
+    // Lower friction → obvious delayed coast; allow ~1–2 extra cards.
     // No end clamps (infinite loop).
-    final friction = FrictionSimulation(0.14, _offset, velocity);
+    final coastVel = velocity * 1.2;
+    final friction = FrictionSimulation(0.062, _offset, coastVel);
     var predicted = friction.x(double.infinity);
     if (predicted.isNaN || predicted.isInfinite) {
-      predicted = _offset + velocity * 0.28;
+      predicted = _offset + coastVel * 0.55;
     }
-    // Cap coast distance so a hard fling does not skip too many cards.
-    final maxJump = 2.6;
+    // Prefer at least one extra card of coast when fling is decisive.
+    final travel = predicted - _offset;
+    if (coastVel.abs() > 1.2 && travel.abs() < 1.4) {
+      predicted = _offset + coastVel.sign * 1.6;
+    }
+    // Cap so a hard fling coasts about 1–2 cards past finger settle (~3.5).
+    final maxJump = 3.5;
     final delta = (predicted - _offset).clamp(-maxJump, maxJump);
     predicted = _offset + delta;
     final target = predicted.round().toDouble();
 
-    // Soft spring = gentle settle (less bounce / eye-strain).
+    // Soft, heavy spring = delayed settle after the coast.
     final spring = SpringDescription(
-      mass: 1.25,
-      stiffness: 26,
-      damping: 13.5,
+      mass: 1.45,
+      stiffness: 18,
+      damping: 11.5,
     );
-    final sim = SpringSimulation(spring, _offset, target, velocity);
+    final sim = SpringSimulation(spring, _offset, target, coastVel);
     _coastCtrl.animateWith(sim);
   }
 
