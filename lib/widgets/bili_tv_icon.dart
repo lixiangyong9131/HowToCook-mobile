@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Simplified Bilibili-style TV mark (two antenna + rounded screen).
+/// Bilibili-style mini TV: rounded body, twin antennas, centered ▶.
+/// Matches the in-app overlay mark (no face, no feet).
 class BiliTvIcon extends StatelessWidget {
   final double size;
   final Color color;
@@ -24,54 +25,63 @@ class _BiliTvPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final stroke = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = size.width * 0.09
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final fill = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
     final w = size.width;
     final h = size.height;
 
-    // Antennae
-    final ax = w * 0.32;
-    final ay = h * 0.28;
-    canvas.drawLine(Offset(w * 0.5, ay), Offset(ax, h * 0.06), stroke);
-    canvas.drawLine(Offset(w * 0.5, ay), Offset(w - ax, h * 0.06), stroke);
-    canvas.drawCircle(Offset(ax, h * 0.06), w * 0.045, fill);
-    canvas.drawCircle(Offset(w - ax, h * 0.06), w * 0.045, fill);
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.085
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
 
-    // TV body
+    final bodyFill = Paint()
+      ..color = color.withValues(alpha: 0.38)
+      ..style = PaintingStyle.fill;
+
+    // Dark play mark on light/translucent body; same-hue fill when color is dark.
+    final playColor =
+        color.computeLuminance() > 0.55 ? const Color(0xFF2C2C2C) : color;
+    final playFill = Paint()
+      ..color = playColor
+      ..style = PaintingStyle.fill;
+
+    // Body sits a bit lower so antennas fit.
     final body = RRect.fromRectAndRadius(
-      Rect.fromLTWH(w * 0.12, h * 0.26, w * 0.76, h * 0.58),
-      Radius.circular(w * 0.14),
+      Rect.fromLTWH(w * 0.14, h * 0.30, w * 0.72, h * 0.56),
+      Radius.circular(w * 0.16),
     );
+    canvas.drawRRect(body, bodyFill);
     canvas.drawRRect(body, stroke);
 
-    // Smile / play face (two dots + arc) — classic bili vibe
-    final eyeY = h * 0.48;
-    canvas.drawCircle(Offset(w * 0.35, eyeY), w * 0.045, fill);
-    canvas.drawCircle(Offset(w * 0.65, eyeY), w * 0.045, fill);
-    final smile = Path()
-      ..moveTo(w * 0.34, h * 0.60)
-      ..quadraticBezierTo(w * 0.5, h * 0.72, w * 0.66, h * 0.60);
-    canvas.drawPath(smile, stroke);
+    // Twin stub antennas (short thick nubs angled outward) — image-2 style.
+    final antenna = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.11
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(w * 0.34, h * 0.32),
+      Offset(w * 0.22, h * 0.10),
+      antenna,
+    );
+    canvas.drawLine(
+      Offset(w * 0.66, h * 0.32),
+      Offset(w * 0.78, h * 0.10),
+      antenna,
+    );
 
-    // Feet
-    canvas.drawLine(
-      Offset(w * 0.30, h * 0.84),
-      Offset(w * 0.22, h * 0.94),
-      stroke,
-    );
-    canvas.drawLine(
-      Offset(w * 0.70, h * 0.84),
-      Offset(w * 0.78, h * 0.94),
-      stroke,
-    );
+    // Centered play triangle ▶
+    final cx = w * 0.52;
+    final cy = h * 0.58;
+    final tw = w * 0.22;
+    final th = h * 0.22;
+    final tri = Path()
+      ..moveTo(cx - tw * 0.45, cy - th * 0.55)
+      ..lineTo(cx - tw * 0.45, cy + th * 0.55)
+      ..lineTo(cx + tw * 0.55, cy)
+      ..close();
+    canvas.drawPath(tri, playFill);
   }
 
   @override

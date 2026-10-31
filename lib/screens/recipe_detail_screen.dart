@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../main.dart';
 import '../models/recipe.dart';
@@ -203,7 +202,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
       ));
     }
     final extra = _extraSection;
-    if (extra != null && extrasMarkdownOf(extra).isNotEmpty) {
+    if (extra != null && _extrasParts(extra).isNotEmpty) {
       tabs.add(_DetailTab(
         label: '附加内容',
         kind: _TabKind.extras,
@@ -1602,7 +1601,7 @@ class _ExtrasBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final md = _extrasMarkdown(section);
+    final parts = _extrasParts(section);
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
       children: [
@@ -1615,21 +1614,10 @@ class _ExtrasBody extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        if (md.trim().isEmpty)
+        if (parts.isEmpty)
           const Text('暂无附加内容', style: TextStyle(color: AppTheme.muted))
         else
-          MarkdownBody(
-            data: md,
-            styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-              p: const TextStyle(fontSize: 15, height: 1.55, color: AppTheme.ink),
-              listBullet: const TextStyle(color: AppTheme.coral),
-              a: const TextStyle(
-                color: AppTheme.coral,
-                fontWeight: FontWeight.w700,
-                decoration: TextDecoration.underline,
-              ),
-            ),
-          ),
+          _ExtrasContent(parts: parts, fontSize: 15),
       ],
     );
   }
@@ -1641,8 +1629,8 @@ class _ExtrasFold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final md = _extrasMarkdown(section);
-    if (md.trim().isEmpty) return const SizedBox.shrink();
+    final parts = _extrasParts(section);
+    if (parts.isEmpty) return const SizedBox.shrink();
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
@@ -1654,17 +1642,116 @@ class _ExtrasFold extends StatelessWidget {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
         ),
         children: [
-          MarkdownBody(
-            data: md,
-            styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-              p: const TextStyle(fontSize: 14, height: 1.5, color: AppTheme.ink),
-              listBullet: const TextStyle(color: AppTheme.coral),
-            ),
-          ),
+          _ExtrasContent(parts: parts, fontSize: 14),
         ],
       ),
     );
   }
+}
+
+/// Coral-dot rows + optional prose — avoids flutter_markdown listIndent skew.
+class _ExtrasContent extends StatelessWidget {
+  final List<_ExtrasPart> parts;
+  final double fontSize;
+  const _ExtrasContent({required this.parts, required this.fontSize});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < parts.length; i++) ...[
+          if (i > 0) const SizedBox(height: 10),
+          if (parts[i].isBullet)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: EdgeInsets.only(top: fontSize * 0.55),
+                  child: Container(
+                    width: 7,
+                    height: 7,
+                    decoration: const BoxDecoration(
+                      color: AppTheme.coral,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    parts[i].text,
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      height: 1.5,
+                      color: AppTheme.ink,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            Text(
+              parts[i].text,
+              style: TextStyle(
+                fontSize: fontSize,
+                height: 1.55,
+                color: AppTheme.ink,
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ExtrasPart {
+  final String text;
+  final bool isBullet;
+  const _ExtrasPart(this.text, {required this.isBullet});
+}
+
+List<_ExtrasPart> _extrasParts(RecipeSection section) {
+  final parts = <_ExtrasPart>[];
+  final body = section.body.trim();
+  if (body.isNotEmpty) {
+    final cleaned = _stripHowtoCookContributionBoilerplate(body);
+    final buf = <String>[];
+    void flushProse() {
+      final prose = buf.join('\n').trim();
+      buf.clear();
+      if (prose.isNotEmpty) {
+        parts.add(_ExtrasPart(prose, isBullet: false));
+      }
+    }
+
+    for (final raw in cleaned.split('\n')) {
+      final line = raw.trimRight();
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) {
+        flushProse();
+        continue;
+      }
+      final bullet = RegExp(r'^[-*+]\s+(.*)$').firstMatch(trimmed);
+      if (bullet != null) {
+        flushProse();
+        final text = bullet.group(1)!.trim();
+        if (text.isEmpty) continue;
+        if (_isHowtoCookContributionLine(text)) continue;
+        parts.add(_ExtrasPart(text, isBullet: true));
+      } else {
+        buf.add(trimmed);
+      }
+    }
+    flushProse();
+  }
+  for (final item in section.items) {
+    final itemText = item.trim();
+    if (itemText.isEmpty) continue;
+    if (_isHowtoCookContributionLine(itemText)) continue;
+    parts.add(_ExtrasPart(itemText, isBullet: true));
+  }
+  return parts;
 }
 
 /// Build extras markdown and strip HowToCook upstream contribution boilerplate.
@@ -1680,8 +1767,6 @@ String extrasMarkdownOf(RecipeSection section) {
   }
   return _stripHowtoCookContributionBoilerplate(buf.toString()).trim();
 }
-
-String _extrasMarkdown(RecipeSection section) => extrasMarkdownOf(section);
 
 bool _isHowtoCookContributionLine(String t) {
   if (!t.contains('如果您遵循本指南')) return false;
