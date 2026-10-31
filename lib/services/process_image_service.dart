@@ -142,9 +142,10 @@ class ProcessImageService {
 
   /// Tip process-card key: `tips/learn/学习焯水.md` → `tips/学习焯水`.
   /// Keys whose bundled/remote card is known wrong for the tip prose.
-  static const _tipImageBlocklist = <String>{
-    'tips/厨房准备', // was 葱油拌面 card upstream
-  };
+  /// `tips/厨房准备` used to be blocked: the upstream card was a mislabeled
+  /// 葱油拌面. This repo now ships the correct kitchen-prep jpeg, so it is
+  /// no longer blocked.
+  static const _tipImageBlocklist = <String>{};
 
   String? tipKeyForPath(String tipPath) {
     final stem = p.basenameWithoutExtension(tipPath);
