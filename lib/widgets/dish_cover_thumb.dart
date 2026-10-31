@@ -94,12 +94,13 @@ class DishCoverThumb extends StatelessWidget {
   });
 
   /// Typical bundled process-image width (720×1289). Square cover shows the
-  /// top [srcWidth]×[srcWidth] band; we drop [cutBottomPx] from that band.
+  /// top [srcWidth]×[srcWidth] band; we drop [cutBottomPx] from that band
+  /// (300 from v0.6.21 + another 500).
   static const double srcWidth = 720;
-  static const double cutBottomPx = 300;
+  static const double cutBottomPx = 800;
 
   static const _ua = {
-    'User-Agent': 'HowToCook-mobile/0.6.21',
+    'User-Agent': 'HowToCook-mobile/0.6.22',
     'Accept': 'image/jpeg,image/*;q=0.8',
   };
 
@@ -109,8 +110,9 @@ class DishCoverThumb extends StatelessWidget {
     final remote = ProcessImageService.instance.remoteUrlFor(recipe);
     final radius = borderRadius ?? BorderRadius.circular(14);
     // Render taller than the clip so bottom of the square crop is discarded.
-    final visibleBand = srcWidth - cutBottomPx; // 420
-    final tall = size * (srcWidth / visibleBand); // ~1.714 × size
+    // Keep a minimum visible band so extreme cuts still show food, not empty.
+    final visibleBand = (srcWidth - cutBottomPx).clamp(160.0, srcWidth);
+    final tall = size * (srcWidth / visibleBand);
 
     Widget image;
     if (path != null) {

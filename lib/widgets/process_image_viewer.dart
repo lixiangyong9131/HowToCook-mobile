@@ -172,15 +172,17 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
             return _placeholder();
           }
 
+          // Immersive: fitWidth keeps full horizontal content (less side crop);
+          // vertical letterbox OK. Non-immersive stays contain.
           final fit =
-              widget.immersive ? BoxFit.cover : BoxFit.contain;
+              widget.immersive ? BoxFit.fitWidth : BoxFit.contain;
           final Widget img;
           if (data.assetBytes != null) {
             img = Image.memory(
               Uint8List.fromList(data.assetBytes!),
               fit: fit,
               width: double.infinity,
-              height: widget.immersive ? double.infinity : null,
+              alignment: Alignment.center,
               filterQuality: FilterQuality.high,
               gaplessPlayback: true,
               errorBuilder: (_, __, ___) =>
@@ -191,7 +193,7 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
               data.file!,
               fit: fit,
               width: double.infinity,
-              height: widget.immersive ? double.infinity : null,
+              alignment: Alignment.center,
               filterQuality: FilterQuality.high,
               errorBuilder: (_, __, ___) =>
                   const Center(child: Text('图片损坏，请重试')),
@@ -230,9 +232,9 @@ class _NetworkProcessImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final net = Image.network(
       url,
-      fit: immersive ? BoxFit.cover : BoxFit.contain,
+      fit: immersive ? BoxFit.fitWidth : BoxFit.contain,
       width: double.infinity,
-      height: immersive ? double.infinity : null,
+      alignment: Alignment.center,
       filterQuality: FilterQuality.high,
       headers: const {
         'User-Agent': 'HowToCook-mobile/0.6.17',
@@ -376,33 +378,39 @@ class _ZoomableImageState extends State<_ZoomableImage> {
                   }
                   _activePointers = (_activePointers - 1).clamp(0, 10);
                 },
-                child: InteractiveViewer(
-                  transformationController: widget.transform,
-                  minScale: widget.immersive ? 1.0 : 0.8,
-                  maxScale: 4,
-                  panEnabled: true,
-                  scaleEnabled: true,
-                  boundaryMargin: widget.immersive
-                      ? const EdgeInsets.all(48)
-                      : const EdgeInsets.fromLTRB(0, 24, 0, 48),
-                  onInteractionEnd: (details) {
-                    if (!_isNearIdentity(widget.transform.value)) return;
-                    final v = details.velocity.pixelsPerSecond;
-                    if (v.dy < -650) {
-                      _fireMaximize();
-                    }
-                  },
-                  child: SizedBox(
-                    width: constraints.maxWidth,
-                    height: constraints.maxHeight,
-                    child: widget.immersive
-                        ? widget.child
-                        : Padding(
+                child: widget.immersive
+                    // Fixed frame: no pan / scale — swipe must not move the image.
+                    ? SizedBox(
+                        width: constraints.maxWidth,
+                        height: constraints.maxHeight,
+                        child: Center(child: widget.child),
+                      )
+                    : InteractiveViewer(
+                        transformationController: widget.transform,
+                        minScale: 0.8,
+                        maxScale: 4,
+                        panEnabled: true,
+                        scaleEnabled: true,
+                        boundaryMargin:
+                            const EdgeInsets.fromLTRB(0, 24, 0, 48),
+                        onInteractionEnd: (details) {
+                          if (!_isNearIdentity(widget.transform.value)) {
+                            return;
+                          }
+                          final v = details.velocity.pixelsPerSecond;
+                          if (v.dy < -650) {
+                            _fireMaximize();
+                          }
+                        },
+                        child: SizedBox(
+                          width: constraints.maxWidth,
+                          height: constraints.maxHeight,
+                          child: Padding(
                             padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
                             child: Center(child: widget.child),
                           ),
-                  ),
-                ),
+                        ),
+                      ),
               );
             },
           ),
