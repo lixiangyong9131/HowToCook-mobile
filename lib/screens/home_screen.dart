@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import '../routes/recipe_nav.dart';
 import '../services/history_store.dart';
+import '../services/process_image_service.dart';
 import '../services/recipe_repository.dart';
 import '../theme/app_theme.dart';
-import '../theme/doodle_icons.dart';
+import '../widgets/dish_cover_thumb.dart';
 import '../widgets/stacked_category_cards.dart';
 import 'category_recipes_screen.dart';
 import 'search_screen.dart';
@@ -380,12 +381,16 @@ class _BrowseRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Same pale category solids as wallet cards (less vivid while scrolling).
     final color = categoryColors[entry.categoryId] ?? categoryCardPalette[0];
+    final recipe = RecipeRepository.instance.resolveBrowse(entry);
+    final hasImg =
+        recipe != null && ProcessImageService.instance.hasImage(recipe);
     final dark = isDarkCard(color);
-    final fg = dark ? Colors.white : AppTheme.navy;
+    final fg = hasImg
+        ? Colors.white
+        : (dark ? Colors.white : AppTheme.navy);
     return Material(
-      color: color,
+      color: Colors.transparent,
       elevation: 2,
       shadowColor: AppTheme.navy.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(AppTheme.radius),
@@ -393,25 +398,12 @@ class _BrowseRow extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(AppTheme.radius),
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppTheme.radius),
-            border: Border.all(color: AppTheme.navy.withValues(alpha: 0.08)),
-          ),
+        child: DishCoverRowBackground(
+          recipe: recipe,
+          fallbackColor: color,
+          borderRadius: BorderRadius.circular(AppTheme.radius),
           child: Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: dark ? 0.22 : 0.62),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: DoodleIcons.categoryIcon(entry.categoryId, size: 30),
-              ),
-              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -424,13 +416,22 @@ class _BrowseRow extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                         fontSize: 16,
                         color: fg,
+                        shadows: hasImg
+                            ? const [
+                                Shadow(
+                                  color: Colors.black54,
+                                  blurRadius: 6,
+                                  offset: Offset(0, 1),
+                                ),
+                              ]
+                            : null,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       entry.categoryName,
                       style: TextStyle(
-                        color: fg.withValues(alpha: 0.72),
+                        color: fg.withValues(alpha: 0.78),
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
@@ -439,7 +440,7 @@ class _BrowseRow extends StatelessWidget {
                 ),
               ),
               Icon(Icons.north_east_rounded,
-                  size: 18, color: fg.withValues(alpha: 0.75)),
+                  size: 18, color: fg.withValues(alpha: 0.8)),
             ],
           ),
         ),

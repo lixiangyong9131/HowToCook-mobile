@@ -76,79 +76,95 @@ class DishHeaderBackdrop extends StatelessWidget {
   }
 }
 
-/// List/logo thumb: process-image crop
-/// `left=10%`, `top=0`, `width=80%`, `height=25%` (upper quarter, middle 80%).
-class DishCoverThumb extends StatelessWidget {
-  final Recipe recipe;
-  final double size;
-  final BorderRadius? borderRadius;
 
-  const DishCoverThumb({
+/// Full-row list background: top **1/4** of the process image, width-filled.
+/// Puts [child] above a readability scrim (no side logo thumb).
+class DishCoverRowBackground extends StatelessWidget {
+  final Recipe? recipe;
+  final Color fallbackColor;
+  final Widget child;
+  final BorderRadius? borderRadius;
+  final EdgeInsetsGeometry padding;
+
+  const DishCoverRowBackground({
     super.key,
     required this.recipe,
-    this.size = 52,
+    required this.fallbackColor,
+    required this.child,
     this.borderRadius,
+    this.padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
   });
 
   static const _ua = {
-    'User-Agent': 'HowToCook-mobile/0.6.24',
+    'User-Agent': 'HowToCook-mobile/0.6.25',
     'Accept': 'image/jpeg,image/*;q=0.8',
   };
 
   @override
   Widget build(BuildContext context) {
-    final path = ProcessImageService.instance.assetPathFor(recipe);
-    final remote = ProcessImageService.instance.remoteUrlFor(recipe);
-    final radius = borderRadius ?? BorderRadius.circular(14);
+    final radius = borderRadius ?? BorderRadius.circular(AppTheme.radius);
+    final r = recipe;
+    final path =
+        r == null ? null : ProcessImageService.instance.assetPathFor(r);
+    final remote =
+        r == null ? null : ProcessImageService.instance.remoteUrlFor(r);
 
-    final Widget raw;
+    Widget? image;
     if (path != null) {
-      raw = Image.asset(
+      image = Image.asset(
         path,
         filterQuality: FilterQuality.medium,
         gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => _fallback(),
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
       );
     } else if (remote != null && remote.isNotEmpty) {
-      raw = Image.network(
+      image = Image.network(
         remote,
         filterQuality: FilterQuality.medium,
         headers: _ua,
-        errorBuilder: (_, __, ___) => _fallback(),
+        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
       );
-    } else {
-      raw = _fallback();
     }
 
-    // Align factors clip to middle 80% × top 25%; FittedBox maps that rect to thumb.
     return ClipRRect(
       borderRadius: radius,
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: FittedBox(
-          fit: BoxFit.fill,
-          clipBehavior: Clip.hardEdge,
-          child: Align(
-            alignment: Alignment.topCenter,
-            widthFactor: 0.8,
-            heightFactor: 0.25,
-            child: raw,
+      child: Stack(
+        fit: StackFit.passthrough,
+        children: [
+          // Fallback / base fill.
+          Positioned.fill(child: ColoredBox(color: fallbackColor)),
+          // Top 1/4 of process image, scaled to cover the whole row.
+          if (image != null)
+            Positioned.fill(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                alignment: Alignment.topCenter,
+                clipBehavior: Clip.hardEdge,
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  heightFactor: 0.25,
+                  child: image,
+                ),
+              ),
+            ),
+          // Scrim so title stays readable over food photo.
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    Colors.black.withValues(alpha: image != null ? 0.55 : 0.0),
+                    Colors.black.withValues(alpha: image != null ? 0.35 : 0.0),
+                    Colors.black.withValues(alpha: image != null ? 0.45 : 0.0),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _fallback() {
-    return ColoredBox(
-      color: AppTheme.softCoral.withValues(alpha: 0.55),
-      child: const SizedBox(
-        width: 160,
-        height: 160,
-        child: Center(
-          child: Icon(Icons.restaurant_rounded, color: AppTheme.navy, size: 48),
-        ),
+          Padding(padding: padding, child: child),
+        ],
       ),
     );
   }
