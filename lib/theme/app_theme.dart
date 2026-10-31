@@ -147,18 +147,18 @@ const categoryEmojis = <String, String>{
   'vegetable_dish': '🥬',
 };
 
-/// Warm navy/coral/cream tones only (no purple).
+/// Soft pastel wallet cards — less vivid so scrolling is easier on the eyes.
 const categoryCardPalette = <Color>[
-  Color(0xFF1A1F3A), // navy
-  Color(0xFFFF8A65), // coral
-  Color(0xFF39FF5A), // neon
-  Color(0xFFFFD6C4), // soft coral
-  Color(0xFF4A7C9B), // muted teal
-  Color(0xFFFFB4A8), // peach
-  Color(0xFF2A3148), // charcoal
-  Color(0xFFFFD166), // warm gold
-  Color(0xFF7CFFB2), // mint
-  Color(0xFFFFA07A), // light coral
+  Color(0xFFC5CAD9), // pale navy-grey
+  Color(0xFFFFD5C8), // pale coral
+  Color(0xFFC8F5D2), // pale mint/neon
+  Color(0xFFFFE8DC), // soft coral cream
+  Color(0xFFB9D0DE), // pale teal
+  Color(0xFFFFDDD6), // pale peach
+  Color(0xFFD0D4E0), // pale charcoal
+  Color(0xFFFFE9B8), // pale gold
+  Color(0xFFCFF8E2), // pale mint
+  Color(0xFFFFD8C4), // pale light coral
 ];
 
 Color categoryAccent(String id, int index) {
@@ -170,14 +170,14 @@ bool isDarkCard(Color c) {
 }
 
 const categoryColors = <String, Color>{
-  'aquatic': Color(0xFF4A7C9B),
-  'breakfast': Color(0xFFFF8A65),
-  'condiment': Color(0xFFFFD166),
-  'dessert': Color(0xFFFFB4A8),
-  'drink': Color(0xFF7CFFB2),
-  'meat_dish': Color(0xFF1A1F3A),
-  'semi-finished': Color(0xFFFFA07A),
-  'soup': Color(0xFFFFD166),
-  'staple': Color(0xFF39FF5A),
-  'vegetable_dish': Color(0xFF39FF5A),
+  'aquatic': Color(0xFFB9D0DE),
+  'breakfast': Color(0xFFFFD5C8),
+  'condiment': Color(0xFFFFE9B8),
+  'dessert': Color(0xFFFFDDD6),
+  'drink': Color(0xFFCFF8E2),
+  'meat_dish': Color(0xFFC5CAD9),
+  'semi-finished': Color(0xFFFFD8C4),
+  'soup': Color(0xFFFFE9B8),
+  'staple': Color(0xFFC8F5D2),
+  'vegetable_dish': Color(0xFFC8F5D2),
 };

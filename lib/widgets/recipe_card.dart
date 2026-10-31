@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../main.dart';
 import '../models/recipe.dart';
 import '../theme/app_theme.dart';
+import 'dish_cover_thumb.dart';
 
 class RecipeCard extends StatelessWidget {
   final int index;
@@ -24,7 +25,6 @@ class RecipeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fav = FavoritesScope.of(context).isFavorite(recipe.id);
-    final dark = isDarkCard(accent);
     return Material(
       color: Colors.white,
       elevation: 2,
@@ -43,34 +43,48 @@ class RecipeCard extends StatelessWidget {
             border: Border.all(color: AppTheme.purple.withValues(alpha: 0.12)),
           ),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             child: Row(
               children: [
                 Container(
                   width: 5,
-                  height: 48,
+                  height: 52,
                   decoration: BoxDecoration(
                     gradient: AppTheme.logoGradient,
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
                 const SizedBox(width: 12),
-                Container(
-                  width: 44,
-                  height: 44,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Text(
-                    '$index',
-                    style: TextStyle(
-                      color: dark ? Colors.white : AppTheme.navy,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 16,
+                // Logo / thumb: same top-band crop as detail header.
+                Stack(
+                  children: [
+                    DishCoverThumb(recipe: recipe, size: 52),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.navy.withValues(alpha: 0.78),
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(8),
+                            bottomRight: Radius.circular(14),
+                          ),
+                        ),
+                        child: Text(
+                          '$index',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
                 const SizedBox(width: 14),
                 Expanded(

@@ -37,6 +37,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   final ValueNotifier<Duration?> _totalN = ValueNotifier<Duration?>(null);
   double _favScale = 1;
   bool _hasProcessImage = false;
+  /// Immersive side tabs: null = image only, 0 = 文字描述, 1 = 必备原料.
+  int? _immersivePanel;
   /// Step indices whose timer finished → stamped 「计时已完成」.
   final Set<int> _timerDoneSteps = {};
   /// Which step the running timer belongs to (null = app-bar / free timer).
@@ -60,8 +62,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
         if (!mounted) return;
         final has = ProcessImageService.instance.hasImage(widget.recipe);
         if (has != _hasProcessImage) {
-          _hasProcessImage = has;
-          _recreateTabs(preferProcessImage: true);
+          setState(() => _hasProcessImage = has);
         }
       });
     }
@@ -175,33 +176,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     return tabs;
   }
 
-  void _recreateTabs({bool preferProcessImage = false}) {
-    final prevKind = _detailTabs.isEmpty
-        ? null
-        : _detailTabs[_tabs.index.clamp(0, _detailTabs.length - 1)].kind;
-    setState(() {
-      _detailTabs = _computeTabs();
-      final old = _tabs;
-      var idx = 0;
-      if (preferProcessImage) {
-        final i = _detailTabs.indexWhere((e) => e.kind == _TabKind.processImage);
-        if (i >= 0) idx = i;
-      } else if (prevKind != null) {
-        final i = _detailTabs.indexWhere((e) => e.kind == prevKind);
-        if (i >= 0) idx = i;
-      }
-      _tabs = TabController(
-        length: _detailTabs.length,
-        vsync: this,
-        initialIndex: idx.clamp(0, _detailTabs.length - 1),
-      );
-      _tabs.addListener(() {
-        if (mounted && !_tabs.indexIsChanging) setState(() {});
-      });
-      old.dispose();
-    });
-  }
-
   @override
   void dispose() {
     _timer?.cancel();
@@ -281,12 +255,374 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     );
   }
 
+  String _formatCookTime(Duration d) {
+    if (d.inHours >= 1) {
+      final h = d.inHours;
+      final m = d.inMinutes % 60;
+      return m > 0 ? '$h 小时 $m 分钟' : '$h 小时';
+    }
+    return '${d.inMinutes} 分钟';
+  }
+
+  List<Widget> _metaChips({required bool onDark}) {
+    final chips = <Widget>[];
+    final fg = onDark
+        ? Colors.white.withValues(alpha: 0.9)
+        : AppTheme.ink.withValues(alpha: 0.85);
+    final bg = onDark
+        ? Colors.black.withValues(alpha: 0.35)
+        : Colors.white.withValues(alpha: 0.7);
+    if (_parsed.calories != null) {
+      chips.add(_MetaChip(
+        icon: Icons.local_fire_department_outlined,
+        label: '${_parsed.calories} 大卡',
+        fg: fg,
+        bg: bg,
+      ));
+    }
+    if (_parsed.cookTime != null) {
+      chips.add(_MetaChip(
+        icon: Icons.schedule_rounded,
+        label: _formatCookTime(_parsed.cookTime!),
+        fg: fg,
+        bg: bg,
+      ));
+    }
+    return chips;
+  }
+
   @override
   Widget build(BuildContext context) {
     final recipe = widget.recipe;
     final color = categoryColors[recipe.categoryId] ?? AppTheme.neon;
     final fav = FavoritesScope.of(context).isFavorite(recipe.id);
 
+    if (_hasProcessImage) {
+      return _buildImmersiveProcessDetail(recipe, color, fav);
+    }
+    return _buildClassicDetail(recipe, color, fav);
+  }
+
+  Widget _buildImmersiveProcessDetail(
+    Recipe recipe,
+    Color color,
+    bool fav,
+  ) {
+    final topPad = MediaQuery.paddingOf(context).top;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Full-page process image — no prose on this view.
+          Positioned.fill(
+            child: ProcessImageViewer(
+              key: ValueKey('process-immersive-${recipe.id}'),
+              immersive: true,
+              loader: () => ProcessImageService.instance.loadFor(recipe),
+              remoteUrl: ProcessImageService.instance.remoteUrlFor(recipe),
+            ),
+          ),
+          // Top scrim for readable chrome.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: topPad + 168,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.62),
+                      Colors.black.withValues(alpha: 0.28),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // App chrome + title / difficulty / calories / cook time.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        tooltip: '返回',
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        icon: const Icon(Icons.arrow_back_rounded,
+                            color: Colors.white),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: '视频做法',
+                        onPressed: _openVideo,
+                        icon: const Icon(Icons.smart_display_outlined,
+                            color: Colors.white),
+                      ),
+                      IconButton(
+                        tooltip: fav ? '取消收藏' : '收藏',
+                        onPressed: _toggleFavorite,
+                        icon: AnimatedScale(
+                          scale: _favScale,
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOutBack,
+                          child: Icon(
+                            fav ? Icons.favorite : Icons.favorite_border,
+                            color: fav ? AppTheme.coral : Colors.white,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '计时',
+                        onPressed: () => _openTimerPicker(),
+                        icon: const Icon(Icons.timer_outlined,
+                            color: Colors.white),
+                      ),
+                    ],
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 120, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              DoodleIcons.categoryIcon(
+                                recipe.categoryId,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                recipe.categoryName,
+                                style: TextStyle(
+                                  color: isDarkCard(color)
+                                      ? Colors.white
+                                      : AppTheme.ink,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          _parsed.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.5,
+                            height: 1.15,
+                          ),
+                        ),
+                        if (_parsed.difficulty != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            '难度 ${'★' * _parsed.difficulty!}${'☆' * (5 - _parsed.difficulty!)}',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.88),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                        if (_metaChips(onDark: true).isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: _metaChips(onDark: true),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Upper-right (below action icons): 文字描述 / 必备原料 tabs.
+          Positioned(
+            top: topPad + 52,
+            right: 12,
+            child: _ImmersiveTabPills(
+              selected: _immersivePanel,
+              onSelect: (i) {
+                HapticFeedback.selectionClick();
+                setState(() {
+                  _immersivePanel = _immersivePanel == i ? null : i;
+                });
+              },
+            ),
+          ),
+          // Sliding content panel for the selected tab.
+          if (_immersivePanel != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              top: MediaQuery.sizeOf(context).height * 0.32,
+              child: _ImmersiveContentPanel(
+                onClose: () => setState(() => _immersivePanel = null),
+                child: _immersivePanel == 0
+                    ? _buildDescPanel()
+                    : _buildIngredientsPanel(),
+              ),
+            ),
+          ValueListenableBuilder<Duration?>(
+            valueListenable: _remainingN,
+            builder: (context, remaining, _) {
+              if (remaining == null) return const SizedBox.shrink();
+              return Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: RunningTimerBar(
+                  remaining: remaining,
+                  total: _totalN.value ?? remaining,
+                  onClose: _closeTimer,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDescPanel() {
+    final intro = _parsed.intro
+        .replaceAll(RegExp(r'!\[.*?\]\([^)]+\)'), '')
+        .trim();
+    final steps = _stepsSection;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
+      children: [
+        const Text(
+          '文字描述',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: AppTheme.ink,
+          ),
+        ),
+        if (intro.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(
+            intro,
+            style: const TextStyle(
+              height: 1.55,
+              color: AppTheme.ink,
+              fontSize: 15,
+            ),
+          ),
+        ],
+        if (steps != null && steps.items.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const Text(
+            '文字步骤',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.ink,
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Reuse timeline but unconstrained height via shrink-wrap list.
+          ...[
+            for (var i = 0; i < steps.items.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE8E8ED)),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 26,
+                        height: 26,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: AppTheme.neon.withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '${i + 1}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          steps.items[i],
+                          style: const TextStyle(height: 1.45, fontSize: 14),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ],
+        if (intro.isEmpty && (steps == null || steps.items.isEmpty))
+          const Padding(
+            padding: EdgeInsets.only(top: 24),
+            child: Text(
+              '暂无文字描述',
+              style: TextStyle(color: AppTheme.muted),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildIngredientsPanel() {
+    final ing = _mergedIngredients;
+    if (ing == null) {
+      return const Center(
+        child: Text('暂无原料信息', style: TextStyle(color: AppTheme.muted)),
+      );
+    }
+    return _SectionBody(
+      section: ing,
+      isIngredient: true,
+      isSteps: false,
+      onPickTimer: _openTimerPicker,
+    );
+  }
+
+  Widget _buildClassicDetail(Recipe recipe, Color color, bool fav) {
     return Scaffold(
       backgroundColor: AppTheme.bg,
       body: Stack(
@@ -299,7 +635,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                   backgroundColor: AppTheme.blackCard,
                   foregroundColor: Colors.white,
                   iconTheme: const IconThemeData(color: Colors.white),
-                  expandedHeight: 210,
+                  expandedHeight: 248,
                   actions: [
                     IconButton(
                       tooltip: '视频做法',
@@ -332,7 +668,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                         DishHeaderBackdrop(
                           recipe: recipe,
                           child: Padding(
-                            // Keep title block above the cream overlap flap.
                             padding: const EdgeInsets.fromLTRB(20, 88, 20, 56),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -385,19 +720,24 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                                   Text(
                                     '难度 ${'★' * _parsed.difficulty!}${'☆' * (5 - _parsed.difficulty!)}',
                                     style: TextStyle(
-                                      color: Colors.white
-                                          .withValues(alpha: 0.85),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.85),
                                       fontWeight: FontWeight.w600,
                                     ),
+                                  ),
+                                ],
+                                if (_metaChips(onDark: true).isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    children: _metaChips(onDark: true),
                                   ),
                                 ],
                               ],
                             ),
                           ),
                         ),
-                        // Raise cream panel edge into the header so it covers
-                        // process-image title text peeking under the food photo.
-                        // Do not change the image crop — only the overlapping sheet.
                         const Align(
                           alignment: Alignment.bottomCenter,
                           child: SizedBox(
@@ -748,4 +1088,145 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(covariant _TabBarDelegate oldDelegate) =>
       tabBar != oldDelegate.tabBar;
+}
+
+
+class _MetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color fg;
+  final Color bg;
+
+  const _MetaChip({
+    required this.icon,
+    required this.label,
+    required this.fg,
+    required this.bg,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: fg),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: fg,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImmersiveTabPills extends StatelessWidget {
+  final int? selected;
+  final ValueChanged<int> onSelect;
+
+  const _ImmersiveTabPills({
+    required this.selected,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Widget pill(int index, String label) {
+      final on = selected == index;
+      return GestureDetector(
+        onTap: () => onSelect(index),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: on ? Colors.white : Colors.black.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: on ? 0 : 0.25),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: on ? AppTheme.ink : Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        pill(0, '文字描述'),
+        const SizedBox(height: 8),
+        pill(1, '必备原料'),
+      ],
+    );
+  }
+}
+
+class _ImmersiveContentPanel extends StatelessWidget {
+  final Widget child;
+  final VoidCallback onClose;
+
+  const _ImmersiveContentPanel({
+    required this.child,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppTheme.bg,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x66000000),
+              blurRadius: 24,
+              offset: Offset(0, -4),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppTheme.muted.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                tooltip: '关闭',
+                onPressed: onClose,
+                icon: const Icon(Icons.close_rounded, color: AppTheme.muted),
+              ),
+            ),
+            Expanded(child: child),
+          ],
+        ),
+      ),
+    );
+  }
 }

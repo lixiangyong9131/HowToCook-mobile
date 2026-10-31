@@ -77,3 +77,71 @@ class DishHeaderBackdrop extends StatelessWidget {
     );
   }
 }
+
+
+/// List/logo thumb: same top-band crop as [DishHeaderBackdrop].
+class DishCoverThumb extends StatelessWidget {
+  final Recipe recipe;
+  final double size;
+  final BorderRadius? borderRadius;
+
+  const DishCoverThumb({
+    super.key,
+    required this.recipe,
+    this.size = 52,
+    this.borderRadius,
+  });
+
+  static const _ua = {
+    'User-Agent': 'HowToCook-mobile/0.6.20',
+    'Accept': 'image/jpeg,image/*;q=0.8',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final path = ProcessImageService.instance.assetPathFor(recipe);
+    final remote = ProcessImageService.instance.remoteUrlFor(recipe);
+    final radius = borderRadius ?? BorderRadius.circular(14);
+
+    Widget child;
+    if (path != null) {
+      child = Image.asset(
+        path,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        width: size,
+        height: size,
+        filterQuality: FilterQuality.medium,
+        gaplessPlayback: true,
+        errorBuilder: (_, __, ___) => _fallback(),
+      );
+    } else if (remote != null && remote.isNotEmpty) {
+      child = Image.network(
+        remote,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        width: size,
+        height: size,
+        filterQuality: FilterQuality.medium,
+        headers: _ua,
+        errorBuilder: (_, __, ___) => _fallback(),
+      );
+    } else {
+      child = _fallback();
+    }
+
+    return ClipRRect(
+      borderRadius: radius,
+      child: SizedBox(width: size, height: size, child: child),
+    );
+  }
+
+  Widget _fallback() {
+    return ColoredBox(
+      color: AppTheme.softCoral.withValues(alpha: 0.55),
+      child: const Center(
+        child: Icon(Icons.restaurant_rounded, color: AppTheme.navy, size: 22),
+      ),
+    );
+  }
+}

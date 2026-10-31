@@ -15,12 +15,15 @@ class ProcessImageViewer extends StatefulWidget {
   final Future<ProcessImageBytes?> Function() loader;
   final String? remoteUrl;
   final VoidCallback? onFallbackSteps;
+  /// Full-bleed detail mode: black canvas, no footer chrome.
+  final bool immersive;
 
   const ProcessImageViewer({
     super.key,
     required this.loader,
     this.remoteUrl,
     this.onFallbackSteps,
+    this.immersive = false,
   });
 
   @override
@@ -144,7 +147,7 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: AppTheme.bg,
+      color: widget.immersive ? Colors.black : AppTheme.bg,
       child: FutureBuilder<ProcessImageBytes?>(
         future: _future,
         builder: (context, snap) {
@@ -163,6 +166,7 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
                 onRetry: _retry,
                 onFallbackSteps: widget.onFallbackSteps,
                 onMaximize: _maximize,
+                immersive: widget.immersive,
               );
             }
             return _placeholder();
@@ -192,6 +196,7 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
           return _ZoomableImage(
             transform: _transform,
             onMaximize: () => _maximize(img),
+            immersive: widget.immersive,
             child: img,
           );
         },
@@ -206,6 +211,7 @@ class _NetworkProcessImage extends StatelessWidget {
   final VoidCallback onRetry;
   final VoidCallback? onFallbackSteps;
   final Future<void> Function(Widget imageChild) onMaximize;
+  final bool immersive;
 
   const _NetworkProcessImage({
     required this.url,
@@ -213,6 +219,7 @@ class _NetworkProcessImage extends StatelessWidget {
     required this.onRetry,
     required this.onMaximize,
     this.onFallbackSteps,
+    this.immersive = false,
   });
 
   @override
@@ -261,6 +268,7 @@ class _NetworkProcessImage extends StatelessWidget {
     return _ZoomableImage(
       transform: transform,
       onMaximize: () => onMaximize(net),
+      immersive: immersive,
       child: net,
     );
   }
@@ -271,11 +279,13 @@ class _ZoomableImage extends StatefulWidget {
   final TransformationController transform;
   final Widget child;
   final VoidCallback onMaximize;
+  final bool immersive;
 
   const _ZoomableImage({
     required this.transform,
     required this.child,
     required this.onMaximize,
+    this.immersive = false,
   });
 
   @override
@@ -377,7 +387,9 @@ class _ZoomableImageState extends State<_ZoomableImage> {
                     width: constraints.maxWidth,
                     height: constraints.maxHeight,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
+                      padding: widget.immersive
+                          ? EdgeInsets.zero
+                          : const EdgeInsets.fromLTRB(8, 4, 8, 20),
                       child: Center(child: widget.child),
                     ),
                   ),
@@ -386,18 +398,19 @@ class _ZoomableImageState extends State<_ZoomableImage> {
             },
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-          child: Text(
-            '${ProcessImageService.attribution}\n点按立即全屏 · 上滑同效 · 双指缩放',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppTheme.muted,
-              fontSize: 11,
-              height: 1.35,
+        if (!widget.immersive)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: Text(
+              '${ProcessImageService.attribution}\n点按立即全屏 · 上滑同效 · 双指缩放',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppTheme.muted,
+                fontSize: 11,
+                height: 1.35,
+              ),
             ),
           ),
-        ),
       ],
     );
   }

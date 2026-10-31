@@ -3,8 +3,6 @@ import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 
 import '../models/recipe.dart';
-import '../services/process_image_service.dart';
-import '../services/recipe_repository.dart';
 import '../theme/app_theme.dart';
 import '../theme/doodle_icons.dart';
 
@@ -507,168 +505,74 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     );
   }
 
-  /// Process-image cover for a category card.
-  /// Default: first recipe with an image. 汤与粥 (`soup`): 2nd (奶油蘑菇汤 band).
-  Recipe? _coverRecipe(CategoryInfo cat) {
-    final list = RecipeRepository.instance.byCategory(cat.id);
-    final withImg = <Recipe>[
-      for (final r in list)
-        if (ProcessImageService.instance.hasImage(r)) r,
-    ];
-    if (withImg.isEmpty) return list.isEmpty ? null : list.first;
-    if (cat.id == 'soup' && withImg.length >= 2) return withImg[1];
-    return withImg.first;
-  }
-
   Widget _cardBody(
     CategoryInfo cat,
     int paletteIndex, {
     double elevation = 10,
     bool emphasize = false,
   }) {
+    // Pale solid fill — no photo background (less eye strain while scrolling).
     final color = categoryAccent(cat.id, paletteIndex);
     final dark = isDarkCard(color);
     final fg = dark ? Colors.white : AppTheme.navy;
     final count = widget.counts[cat.id] ?? 0;
     final blur = 10.0 + elevation * 0.5;
     final yOff = 4.0 + elevation * 0.35;
-    final cover = _coverRecipe(cat);
-    final asset = cover == null
-        ? null
-        : ProcessImageService.instance.assetPathFor(cover);
-    final remote = cover == null
-        ? null
-        : ProcessImageService.instance.remoteUrlFor(cover);
-
-    Widget? bg;
-    if (asset != null) {
-      bg = Image.asset(
-        asset,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-        // ~50px down from process-image top (food band), width fills card.
-        alignment: const Alignment(0, -0.82),
-        filterQuality: FilterQuality.medium,
-        gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => const SizedBox.expand(),
-      );
-    } else if (remote != null && remote.isNotEmpty) {
-      bg = Image.network(
-        remote,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-        alignment: const Alignment(0, -0.82),
-        filterQuality: FilterQuality.medium,
-        errorBuilder: (_, __, ___) => const SizedBox.expand(),
-        headers: const {
-          'User-Agent': 'HowToCook-mobile/0.6.17',
-          'Accept': 'image/jpeg,image/*;q=0.8',
-        },
-      );
-    }
 
     return Container(
       height: _cardH,
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(AppTheme.radius),
-        border: color == Colors.white
-            ? Border.all(color: AppTheme.navy.withValues(alpha: 0.12))
-            : (emphasize
-                ? Border.all(
-                    color: Colors.white.withValues(alpha: dark ? 0.22 : 0.35),
-                    width: 1.2,
-                  )
-                : null),
+        border: Border.all(
+          color: AppTheme.navy.withValues(alpha: emphasize ? 0.16 : 0.08),
+          width: emphasize ? 1.2 : 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.navy.withValues(alpha: 0.14 + elevation * 0.008),
+            color: AppTheme.navy.withValues(alpha: 0.10 + elevation * 0.006),
             blurRadius: blur,
             offset: Offset(0, yOff),
           ),
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (bg != null) bg,
-          // Scrim so title stays readable over food photo.
-          if (bg != null)
-            DecoratedBox(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        child: Row(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: [
-                    Colors.black.withValues(alpha: 0.55),
-                    Colors.black.withValues(alpha: 0.25),
-                    Colors.black.withValues(alpha: 0.45),
-                  ],
+                color: Colors.white.withValues(alpha: dark ? 0.22 : 0.62),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: DoodleIcons.categoryIcon(cat.id, size: 40),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                cat.name,
+                style: TextStyle(
+                  color: fg,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: Row(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(
-                      alpha: bg != null ? 0.22 : (dark ? 0.18 : 0.55),
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: DoodleIcons.categoryIcon(cat.id, size: 40),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    cat.name,
-                    style: TextStyle(
-                      color: bg != null ? Colors.white : fg,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      shadows: bg != null
-                          ? const [
-                              Shadow(
-                                color: Colors.black54,
-                                blurRadius: 8,
-                                offset: Offset(0, 1),
-                              ),
-                            ]
-                          : null,
-                    ),
-                  ),
-                ),
-                Text(
-                  '$count',
-                  style: TextStyle(
-                    color: (bg != null ? Colors.white : fg)
-                        .withValues(alpha: 0.95),
-                    fontSize: 32,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
-                    shadows: bg != null
-                        ? const [
-                            Shadow(
-                              color: Colors.black54,
-                              blurRadius: 8,
-                              offset: Offset(0, 1),
-                            ),
-                          ]
-                        : null,
-                  ),
-                ),
-              ],
+            Text(
+              '$count',
+              style: TextStyle(
+                color: fg.withValues(alpha: 0.92),
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.5,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

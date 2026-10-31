@@ -5,12 +5,18 @@ class ParsedRecipe {
   final String title;
   final String intro;
   final int? difficulty;
+  /// e.g. 815 from 「预估卡路里：815 大卡」
+  final int? calories;
+  /// Estimated cook duration from intro prose when present.
+  final Duration? cookTime;
   final List<RecipeSection> sections;
 
   const ParsedRecipe({
     required this.title,
     required this.intro,
     required this.difficulty,
+    required this.calories,
+    required this.cookTime,
     required this.sections,
   });
 }
@@ -34,6 +40,7 @@ ParsedRecipe parseRecipeMarkdown(String markdown) {
   String title = '';
   final introBuf = StringBuffer();
   int? difficulty;
+  int? calories;
   final sections = <RecipeSection>[];
 
   String? currentTitle;
@@ -77,6 +84,12 @@ ParsedRecipe parseRecipeMarkdown(String markdown) {
     final diff = RegExp(r'预估烹饪难度[：:]\s*(★+)').firstMatch(line);
     if (diff != null) {
       difficulty = diff.group(1)!.length;
+      continue;
+    }
+    final cal = RegExp(r'预估卡路里[：:]\s*(\d+)\s*大卡').firstMatch(line);
+    if (cal != null) {
+      calories = int.tryParse(cal.group(1)!);
+      continue;
     }
     if (currentTitle == null) {
       if (line.trim().isNotEmpty && !line.trim().startsWith('#')) {
@@ -96,12 +109,44 @@ ParsedRecipe parseRecipeMarkdown(String markdown) {
   }
   flush();
 
+  final introRaw = introBuf.toString().trim();
+  final cookTime = _extractCookTime(introRaw);
+
   return ParsedRecipe(
     title: title.isEmpty ? '菜谱' : title,
-    intro: introBuf.toString().trim(),
+    intro: introRaw,
     difficulty: difficulty,
+    calories: calories,
+    cookTime: cookTime,
     sections: sections,
   );
+}
+
+Duration? _extractCookTime(String intro) {
+  final patterns = <RegExp>[
+    RegExp(r'大约需要\s*(\d+)\s*分钟'),
+    RegExp(r'约需\s*(\d+)\s*分钟'),
+    RegExp(r'大约\s*(\d+)\s*分钟'),
+    RegExp(r'一般\s*(\d+)\s*分钟'),
+    RegExp(r'需(?:要)?\s*(\d+)\s*分钟'),
+    RegExp(r'(\d+)\s*分钟(?:就能|即可|左右|出锅)'),
+  ];
+  for (final re in patterns) {
+    final m = re.firstMatch(intro);
+    if (m != null) {
+      final n = int.tryParse(m.group(1)!);
+      if (n != null && n > 0) return Duration(minutes: n);
+    }
+  }
+  final hour = RegExp(r'大约需要\s*(\d+)\s*小时').firstMatch(intro);
+  if (hour != null) {
+    final n = int.tryParse(hour.group(1)!);
+    if (n != null && n > 0) return Duration(hours: n);
+  }
+  if (intro.contains('半小时') || intro.contains('半个小时')) {
+    return const Duration(minutes: 30);
+  }
+  return null;
 }
 
 /// Extract first timer duration in milliseconds from step text.
