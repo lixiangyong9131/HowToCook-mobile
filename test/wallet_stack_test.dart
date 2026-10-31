@@ -4,7 +4,9 @@ import 'package:how_to_cook/models/recipe.dart';
 import 'package:how_to_cook/widgets/stacked_category_cards.dart';
 
 void main() {
-  testWidgets('folded wallet renders stacked pile (not a PageView)', (tester) async {
+  testWidgets('folded wallet renders stacked pile (not a PageView)', (
+    tester,
+  ) async {
     final cats = [
       for (var i = 0; i < 8; i++) CategoryInfo(id: 'c$i', name: '分类$i'),
     ];
@@ -31,9 +33,24 @@ void main() {
     expect(find.text('分类浏览'), findsOneWidget);
     expect(find.text('展开'), findsOneWidget);
     expect(find.textContaining('循环甩动'), findsNothing);
+
+    // Tight stack: front card is tall, the next card only shows a short lip.
+    expect(find.text('分类0'), findsOneWidget);
+    expect(find.text('分类1'), findsOneWidget);
+    expect(find.text('分类3'), findsOneWidget);
+    expect(find.text('分类4'), findsNothing);
+    final front = tester.getRect(find.byKey(const ValueKey('stack-card-c0')));
+    final behind = tester.getRect(find.byKey(const ValueKey('stack-card-c1')));
+    expect(front.height, greaterThan(240));
+    expect(behind.height, front.height);
+    final lip = front.top - behind.top;
+    expect(lip, greaterThan(28));
+    expect(lip, lessThan(52));
   });
 
-  testWidgets('fling can coast across cards (multi-card inertia)', (tester) async {
+  testWidgets('fling can coast across cards (multi-card inertia)', (
+    tester,
+  ) async {
     final cats = [
       for (var i = 0; i < 8; i++) CategoryInfo(id: 'c$i', name: '分类$i'),
     ];

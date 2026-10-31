@@ -6,12 +6,14 @@ import '../models/recipe.dart';
 import '../theme/app_theme.dart';
 import '../theme/doodle_icons.dart';
 
-/// Apple Wallet–style **stacked overlapping** category pile (not a PageView).
+/// Tight vertical stack of category cards (not a PageView).
 ///
-/// Folded: continuous free-scroll through the pile (**infinite loop** —
-/// past the last card wraps to the first). Finger drag tracks 1:1; release
-/// coasts with soft friction then springs to nearest card. Passed cards
-/// rise into an upper peek pile. Tap front to open.
+/// Folded: cards share one column on a navy stage. Cards behind the front
+/// one only show a short title lip (tighter than a loose “access card”
+/// stack). The front card is tall — cover mark plus the category name.
+/// Finger up/down still free-scrolls the pile (**infinite loop**). Release
+/// coasts with friction, then springs to the nearest card. Tap the front
+/// card to open.
 /// Expanded: fan-out list with the same AnimationController as collapse.
 class StackedCategoryCards extends StatefulWidget {
   final List<CategoryInfo> categories;
@@ -19,8 +21,10 @@ class StackedCategoryCards extends StatefulWidget {
   final ValueChanged<CategoryInfo> onOpen;
   final bool initiallyExpanded;
   final bool autoFanOnMount;
+
   /// After a swipe settles on a new front card, call [onOpen] with it.
   final bool openOnSwipeSettle;
+
   /// Show 展开/叠起 control (false = wallet-only folded UX).
   final bool showExpandButton;
 
@@ -41,14 +45,25 @@ class StackedCategoryCards extends StatefulWidget {
 
 class _StackedCategoryCardsState extends State<StackedCategoryCards>
     with TickerProviderStateMixin {
-  static const _peek = 28.0;
-  static const _upperPeek = 22.0;
-  static const _cardH = 104.0;
+  /// Title lip of each card behind the front one.
+  /// A loose reference stack shows ~64–72px of the card behind; this is
+  /// about 60% of that, so the pile reads tighter.
+  static const _peek = 40.0;
+
+  /// Expanded-list row height (folded front card is taller — see [_frontH]).
+  static const _cardH = 108.0;
   static const _gap = 12.0;
   static const _visibleBehind = 3;
-  static const _visibleAbove = 3;
-  /// Finger pixels per one card of [offset] — Clock-wheel density (~itemExtent feel).
+  static const _stackRadius = 28.0;
+
+  /// Finger pixels per one card of [offset].
   static const _pxPerCard = 64.0;
+
+  /// Front card fills most of the lower half of a phone screen.
+  static double _frontH(BuildContext context) {
+    final h = MediaQuery.sizeOf(context).height;
+    return (h * 0.48).clamp(300.0, 460.0);
+  }
 
   late bool _expanded;
   late final AnimationController _fanCtrl;
@@ -58,8 +73,10 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   double _offset = 0;
   int _lastSettled = 0;
   bool _dragging = false;
+
   /// 0 idle, 1 friction coast, 2 spring snap.
   int _coastPhase = 0;
+
   /// Last integer slot that fired a scroll tick haptic (Clock-wheel style).
   int _lastTick = 0;
 
@@ -69,9 +86,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     _expanded = widget.initiallyExpanded && !widget.autoFanOnMount;
     _fanCtrl = AnimationController(
       vsync: this,
-      duration: Duration(
-        milliseconds: 680 + widget.categories.length * 32,
-      ),
+      duration: Duration(milliseconds: 680 + widget.categories.length * 32),
       value: _expanded ? 1 : 0,
     );
     _coastCtrl = AnimationController.unbounded(vsync: this)
@@ -126,14 +141,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
       }
       _coastPhase = 2;
       // Cupertino-ish snap: stiff spring, quick settle onto a slot.
-      final spring = SpringDescription(
-        mass: 1.0,
-        stiffness: 110,
-        damping: 18,
-      );
-      _coastCtrl.animateWith(
-        SpringSimulation(spring, _offset, target, 0),
-      );
+      final spring = SpringDescription(mass: 1.0, stiffness: 110, damping: 18);
+      _coastCtrl.animateWith(SpringSimulation(spring, _offset, target, 0));
       return;
     }
 
@@ -178,11 +187,11 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     _fanCtrl
         .animateBack(0, duration: _collapseDur, curve: Curves.linear)
         .whenComplete(() {
-      if (!mounted) return;
-      if (_fanCtrl.value <= 0.001) {
-        setState(() => _expanded = false);
-      }
-    });
+          if (!mounted) return;
+          if (_fanCtrl.value <= 0.001) {
+            setState(() => _expanded = false);
+          }
+        });
   }
 
   void _toggle() => _expanded ? _collapse() : _expand();
@@ -202,11 +211,6 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     var rel = index - _offset;
     rel -= n * (rel / n).round();
     return rel;
-  }
-
-  int _paletteIndex(CategoryInfo cat) {
-    final i = widget.categories.indexWhere((c) => c.id == cat.id);
-    return i < 0 ? 0 : i;
   }
 
   void _onVerticalDragStart(DragStartDetails _) {
@@ -270,10 +274,8 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     final n = cats.length;
     if (n == 0) return const SizedBox.shrink();
 
-    final peekN = n.clamp(0, _visibleBehind + 1);
-    final upperN = n.clamp(0, _visibleAbove);
-    final collapsedH =
-        _cardH + _peek * (peekN - 1).clamp(0, 99) + _upperPeek * upperN + 24;
+    final frontH = _frontH(context);
+    final collapsedH = frontH + _peek * _visibleBehind;
     final expandedH = n * (_cardH + _gap) - _gap;
 
     return Column(
@@ -339,25 +341,42 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
             ],
           ],
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
         AnimatedBuilder(
           animation: Listenable.merge([_fanCtrl, _coastCtrl]),
           builder: (context, _) {
-            // Single curve pass. Collapse uses easeOutCubic so the last
-            // segment decelerates instead of snapping into the wallet.
             final raw = _fanCtrl.value.clamp(0.0, 1.0);
-            final tFan = (_fanCtrl.status == AnimationStatus.reverse ||
+            final tFan =
+                (_fanCtrl.status == AnimationStatus.reverse ||
                     (_fanCtrl.status == AnimationStatus.dismissed &&
                         !_expanded))
                 ? Curves.easeOutCubic.transform(raw)
                 : Curves.easeInOutCubic.transform(raw);
             final height = collapsedH + (expandedH - collapsedH) * tFan;
-            // Fan while expanded or mid-animation; wallet only when fully folded.
-            // Fan cards lerp to wallet slots as t→0 so the handoff is seamless.
             final showFan = _expanded || _fanCtrl.value > 0.001;
-            return SizedBox(
-              height: height + 8,
-              child: showFan ? _buildExpanded(n) : _buildWallet(n),
+            final pile = SizedBox(
+              height: showFan ? height : collapsedH,
+              child: showFan
+                  ? _buildExpanded(n, frontH)
+                  : _buildWallet(n, frontH),
+            );
+            if (showFan) return pile;
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppTheme.navy,
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.navy.withValues(alpha: 0.28),
+                    blurRadius: 22,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 16),
+                child: pile,
+              ),
             );
           },
         ),
@@ -365,119 +384,81 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     );
   }
 
-  Widget _buildExpanded(int n) {
+  Widget _buildExpanded(int n, double frontH) {
     return Stack(
       clipBehavior: Clip.none,
-      children: [
-        for (var i = 0; i < n; i++) _buildFanCard(i, n),
-      ],
+      children: [for (var i = 0; i < n; i++) _buildFanCard(i, n, frontH)],
     );
   }
 
-  Widget _buildFanCard(int i, int n) {
+  Widget _buildFanCard(int i, int n, double frontH) {
     final cat = widget.categories[i];
-    // Light stagger that reverses cleanly (back cards settle first on collapse).
     final stagger = (i / n.clamp(1, 99)) * 0.22;
     final raw = _fanCtrl.value.clamp(0.0, 1.0);
-    final localRaw =
-        ((raw - stagger) / (1.0 - stagger).clamp(0.001, 1.0)).clamp(0.0, 1.0);
-    final collapsing = _fanCtrl.status == AnimationStatus.reverse;
-    final t = (collapsing
-            ? Curves.easeOutCubic.transform(localRaw)
-            : Curves.easeInOutCubic.transform(localRaw))
+    final localRaw = ((raw - stagger) / (1.0 - stagger).clamp(0.001, 1.0))
         .clamp(0.0, 1.0);
+    final collapsing = _fanCtrl.status == AnimationStatus.reverse;
+    final t =
+        (collapsing
+                ? Curves.easeOutCubic.transform(localRaw)
+                : Curves.easeInOutCubic.transform(localRaw))
+            .clamp(0.0, 1.0);
 
-    final focusOrigin = _upperPeek * _visibleAbove.toDouble() + 6;
-    final wallet = _walletSlot(i, n, focusOrigin);
+    final slot = _stackSlot(_circularRel(i));
     final listTop = i * (_cardH + _gap);
-
-    // t=0 → wallet slot (matches folded deck); t=1 → full list row.
-    final top = wallet.top + (listTop - wallet.top) * t;
-    final scale = wallet.scale + (1.0 - wallet.scale) * t;
-    final sideInset = wallet.sideInset * (1.0 - t);
-    final opacity = wallet.opacity + (1.0 - wallet.opacity) * t;
-    final elev = wallet.elev + (10.0 - wallet.elev) * t;
+    final top = slot.top + (listTop - slot.top) * t;
+    final height = frontH + (_cardH - frontH) * t;
+    final opacity = slot.opacity + (1.0 - slot.opacity) * t;
 
     return Positioned(
       top: top,
-      left: sideInset,
-      right: sideInset,
+      left: 0,
+      right: 0,
       child: Opacity(
         opacity: opacity.clamp(0.0, 1.0),
-        child: Transform.scale(
-          scale: scale,
-          alignment: Alignment.topCenter,
-          child: GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              widget.onOpen(cat);
-            },
-            child: _cardBody(cat, i, elevation: elev),
-          ),
+        child: GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            widget.onOpen(cat);
+          },
+          child: _cardBody(cat, i, height: height, elevation: slot.elev),
         ),
       ),
     );
   }
 
-  /// Wallet-deck layout for one card — shared by folded pile and fan→wallet lerp.
-  ({double top, double scale, double opacity, double sideInset, double elev})
-      _walletSlot(int index, int n, double focusOrigin) {
-    final rel = _circularRel(index);
-    if (rel < -(_visibleAbove + 1.15) || rel > (_visibleBehind + 1.15)) {
-      // Off-screen slots: park above/below so they still lerp in gently.
-      final offTop = rel < 0
-          ? focusOrigin - (_visibleAbove + 1.2) * _upperPeek
-          : focusOrigin + (_visibleBehind + 1.2) * _peek;
-      return (top: offTop, scale: 0.9, opacity: 0.0, sideInset: 14, elev: 0);
+  /// Folded stack slot. rel 0 is the tall front card; rel > 0 sits above it
+  /// by [_peek] per step so only the title lip shows.
+  ({double top, double opacity, double elev}) _stackSlot(double rel) {
+    final vb = _visibleBehind.toDouble();
+    if (rel <= -1.0 || rel > vb + 0.45) {
+      return (top: rel < 0 ? -120.0 : vb * _peek, opacity: 0.0, elev: 0);
     }
-
-    final depthUp = (-rel).clamp(0.0, _visibleAbove + 0.8);
-    final depthDown = rel.clamp(0.0, _visibleBehind + 0.8);
-    final upT = Curves.easeInOutCubic.transform(
-      (depthUp / (_visibleAbove + 0.8)).clamp(0.0, 1.0),
-    );
-    final downT = Curves.easeInOutCubic.transform(
-      (depthDown / (_visibleBehind + 0.8)).clamp(0.0, 1.0),
-    );
-
-    late double top;
-    late double scale;
-    late double opacity;
-    late double sideInset;
-    late double elev;
-    if (rel <= 0) {
-      top = focusOrigin - depthUp * _upperPeek;
-      scale = 1.0 - upT * 0.06;
-      opacity = (1.0 - upT * 0.45).clamp(0.25, 1.0);
-      sideInset = 10.0 * upT;
-      elev = 10.0 * (1.0 - upT);
-    } else {
-      top = focusOrigin + depthDown * _peek;
-      scale = 1.0 - downT * 0.07;
-      opacity = (1.0 - downT * 0.35).clamp(0.3, 1.0);
-      sideInset = 12.0 * downT;
-      elev = 10.0 * (1.0 - downT);
+    if (rel >= 0) {
+      final depth = rel.clamp(0.0, vb);
+      return (
+        top: (vb - depth) * _peek,
+        opacity: 1.0,
+        elev: rel < 0.45 ? 16.0 : 7.0,
+      );
     }
+    final leave = (-rel).clamp(0.0, 1.0);
     return (
-      top: top,
-      scale: scale,
-      opacity: opacity,
-      sideInset: sideInset,
-      elev: elev,
+      top: vb * _peek + rel * (_peek + 28),
+      opacity: (1.0 - leave * 1.25).clamp(0.0, 1.0),
+      elev: 18.0,
     );
   }
 
-  Widget _buildWallet(int n) {
-    // Origin Y of the focus slot — leave room for the upper (passed) pile.
-    final focusOrigin = _upperPeek * _visibleAbove.toDouble() + 6;
-
-    // Draw far cards first so nearer ones paint on top.
+  Widget _buildWallet(int n, double frontH) {
     final indices = List<int>.generate(n, (i) => i);
     indices.sort((a, b) {
-      final da = _circularRel(a).abs();
-      final db = _circularRel(b).abs();
-      final c = db.compareTo(da);
-      return c != 0 ? c : a.compareTo(b);
+      final ra = _circularRel(a);
+      final rb = _circularRel(b);
+      final aExit = ra < 0;
+      final bExit = rb < 0;
+      if (aExit != bExit) return aExit ? 1 : -1;
+      return rb.compareTo(ra);
     });
 
     return GestureDetector(
@@ -489,91 +470,37 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
       child: Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.topCenter,
-        children: [
-          for (final i in indices) _buildWalletCard(i, n, focusOrigin),
-        ],
+        children: [for (final i in indices) _buildWalletCard(i, frontH)],
       ),
     );
   }
 
-  Widget _buildWalletCard(int index, int n, double focusOrigin) {
+  Widget _buildWalletCard(int index, double frontH) {
+    final rel = _circularRel(index);
+    final slot = _stackSlot(rel);
+    if (slot.opacity <= 0.001) return const SizedBox.shrink();
+
     final cat = widget.categories[index];
-    final paletteI = _paletteIndex(cat);
-    final rel = _circularRel(index); // <0 passed/upper, 0 focus, >0 lower
-
-    // Soft edge fade — mid-scroll frames stay smooth (ring-aware).
-    if (rel < -(_visibleAbove + 1.15) || rel > (_visibleBehind + 1.15)) {
-      return const SizedBox.shrink();
-    }
-
-    final depthUp = (-rel).clamp(0.0, _visibleAbove + 0.8);
-    final depthDown = rel.clamp(0.0, _visibleBehind + 0.8);
-    // Smoother easing for silkier morph between stacked slots.
-    final upT = Curves.easeInOutCubic.transform(
-      (depthUp / (_visibleAbove + 0.8)).clamp(0.0, 1.0),
-    );
-    final downT = Curves.easeInOutCubic.transform(
-      (depthDown / (_visibleBehind + 0.8)).clamp(0.0, 1.0),
-    );
-
-    late double top;
-    late double scale;
-    late double opacity;
-    late double sideInset;
-    late double elev;
-
-    if (rel <= 0) {
-      top = focusOrigin - depthUp * _upperPeek;
-      scale = 1.0 - upT * 0.06;
-      opacity = (1.0 - upT * 0.45).clamp(0.25, 1.0);
-      sideInset = 10.0 * upT;
-      elev = 10.0 * (1.0 - upT);
-    } else {
-      top = focusOrigin + depthDown * _peek;
-      scale = 1.0 - downT * 0.07;
-      opacity = (1.0 - downT * 0.35).clamp(0.3, 1.0);
-      sideInset = 12.0 * downT;
-      elev = 10.0 * (1.0 - downT);
-    }
-
-    // Front card eases between slots (visible card morph, less twitchy).
-    final frac = (rel.abs() < 1) ? (1.0 - rel.abs()) : 0.0;
-    final lift = Curves.easeInOutCubic.transform(frac.clamp(0.0, 1.0));
-    final dragLift = _dragging ? 1.0 : 0.7;
-    scale += 0.03 * lift * dragLift;
-    top -= 8.0 * lift * dragLift;
-    elev += 12.0 * lift;
-
     final isFront = rel.abs() < 0.5;
-    final tilt = (rel <= 0 ? -upT : downT) * 0.035;
 
     return Positioned(
-      top: top,
-      left: sideInset,
-      right: sideInset,
+      top: slot.top,
+      left: 0,
+      right: 0,
       child: Opacity(
-        opacity: opacity,
-        child: Transform(
-          alignment: Alignment.center,
-          transform: Matrix4.identity()
-            ..setEntry(3, 2, 0.00115)
-            ..rotateX(tilt),
-          child: Transform.scale(
-            scale: scale,
-            alignment: Alignment.topCenter,
-            child: GestureDetector(
-              onTap: () {
-                if (!isFront) return;
-                HapticFeedback.lightImpact();
-                widget.onOpen(cat);
-              },
-              child: _cardBody(
-                cat,
-                paletteI,
-                elevation: elev,
-                emphasize: isFront,
-              ),
-            ),
+        opacity: slot.opacity,
+        child: GestureDetector(
+          onTap: () {
+            if (!isFront) return;
+            HapticFeedback.lightImpact();
+            widget.onOpen(cat);
+          },
+          child: _cardBody(
+            cat,
+            index,
+            height: frontH,
+            elevation: slot.elev,
+            emphasize: isFront,
           ),
         ),
       ),
@@ -583,73 +510,136 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
   Widget _cardBody(
     CategoryInfo cat,
     int paletteIndex, {
+    required double height,
     double elevation = 10,
     bool emphasize = false,
   }) {
-    // Pale solid fill — no photo background (less eye strain while scrolling).
-    final color = categoryAccent(cat.id, paletteIndex);
-    final dark = isDarkCard(color);
-    final fg = dark ? Colors.white : AppTheme.navy;
+    final color = _stackColors[paletteIndex % _stackColors.length];
+    final lightFg = color.computeLuminance() < 0.62;
+    final fg = lightFg ? Colors.white : AppTheme.navy;
     final count = widget.counts[cat.id] ?? 0;
-    final blur = 10.0 + elevation * 0.5;
-    final yOff = 4.0 + elevation * 0.35;
+    final iconSize = ((height - _peek) * 0.58).clamp(72.0, 168.0);
 
     return Container(
-      height: _cardH,
+      key: ValueKey('stack-card-${cat.id}'),
+      height: height,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(AppTheme.radius),
+        borderRadius: BorderRadius.circular(_stackRadius),
         border: Border.all(
-          color: AppTheme.navy.withValues(alpha: emphasize ? 0.16 : 0.08),
-          width: emphasize ? 1.2 : 1,
+          color: Colors.white.withValues(alpha: emphasize ? 0.55 : 0.28),
+          width: emphasize ? 1.4 : 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: AppTheme.navy.withValues(alpha: 0.10 + elevation * 0.006),
-            blurRadius: blur,
-            offset: Offset(0, yOff),
+            color: Colors.black.withValues(alpha: 0.18 + elevation * 0.006),
+            blurRadius: 12,
+            spreadRadius: -3,
+            offset: Offset(0, 5 + elevation * 0.15),
           ),
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18),
-        child: Row(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: dark ? 0.22 : 0.62),
-                borderRadius: BorderRadius.circular(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: _peek,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      cat.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: fg,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        height: 1.05,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$count 道',
+                    style: TextStyle(
+                      color: fg.withValues(alpha: 0.82),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
               ),
-              child: DoodleIcons.categoryIcon(cat.id, size: 40),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                cat.name,
-                style: TextStyle(
-                  color: fg,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
+          ),
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Positioned(
+                  right: -28,
+                  bottom: -36,
+                  child: Container(
+                    width: iconSize * 1.7,
+                    height: iconSize * 1.7,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: (lightFg ? Colors.white : AppTheme.navy)
+                          .withValues(alpha: lightFg ? 0.10 : 0.06),
+                    ),
+                  ),
                 ),
-              ),
+                Positioned(
+                  left: -20,
+                  top: 8,
+                  child: Container(
+                    width: iconSize * 0.72,
+                    height: iconSize * 0.72,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppTheme.coral.withValues(
+                        alpha: lightFg ? 0.22 : 0.35,
+                      ),
+                    ),
+                  ),
+                ),
+                Center(
+                  child: Container(
+                    width: iconSize,
+                    height: iconSize,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.92),
+                      shape: BoxShape.circle,
+                    ),
+                    child: DoodleIcons.categoryIcon(
+                      cat.id,
+                      size: iconSize * 0.72,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            Text(
-              '$count',
-              style: TextStyle(
-                color: fg.withValues(alpha: 0.92),
-                fontSize: 32,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.5,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
-
 }
+
+/// Saturated stack faces that stay inside navy / cream / coral.
+const _stackColors = <Color>[
+  Color(0xFFFF8A65),
+  Color(0xFFFFF6EB),
+  Color(0xFF4A7C9B),
+  Color(0xFFFFD6C4),
+  Color(0xFF243056),
+  Color(0xFFFFE8DC),
+  Color(0xFFFFB59A),
+  Color(0xFFE7F6EE),
+  Color(0xFFFFE0B2),
+  Color(0xFFD6E4EE),
+];
