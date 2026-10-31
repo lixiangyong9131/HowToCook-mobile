@@ -380,8 +380,14 @@ class _BrowseRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Same pale category solids as wallet cards (less vivid while scrolling).
+    final color = categoryColors[entry.categoryId] ?? categoryCardPalette[0];
+    final dark = isDarkCard(color);
+    final fg = dark ? Colors.white : AppTheme.navy;
     return Material(
-      color: Colors.white,
+      color: color,
+      elevation: 2,
+      shadowColor: AppTheme.navy.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(AppTheme.radius),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -391,26 +397,16 @@ class _BrowseRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppTheme.radius),
-            boxShadow: AppTheme.softShadow(opacity: 0.08),
-            border: Border.all(color: AppTheme.purple.withValues(alpha: 0.10)),
+            border: Border.all(color: AppTheme.navy.withValues(alpha: 0.08)),
           ),
           child: Row(
             children: [
-              Container(
-                width: 5,
-                height: 44,
-                decoration: BoxDecoration(
-                  gradient: AppTheme.logoGradient,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-              const SizedBox(width: 12),
               Container(
                 width: 48,
                 height: 48,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: AppTheme.lilac,
+                  color: Colors.white.withValues(alpha: dark ? 0.22 : 0.62),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: DoodleIcons.categoryIcon(entry.categoryId, size: 30),
@@ -424,16 +420,17 @@ class _BrowseRow extends StatelessWidget {
                       entry.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 16,
+                        color: fg,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       entry.categoryName,
-                      style: const TextStyle(
-                        color: AppTheme.muted,
+                      style: TextStyle(
+                        color: fg.withValues(alpha: 0.72),
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
@@ -441,8 +438,8 @@ class _BrowseRow extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.north_east_rounded,
-                  size: 18, color: AppTheme.purple),
+              Icon(Icons.north_east_rounded,
+                  size: 18, color: fg.withValues(alpha: 0.75)),
             ],
           ),
         ),
