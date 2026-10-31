@@ -69,7 +69,11 @@ class TipDetailScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(18),
               child: AspectRatio(
                 aspectRatio: 9 / 12,
-                child: Image.asset(jpeg, fit: BoxFit.cover),
+                child: Image.asset(
+                  jpeg,
+                  fit: BoxFit.cover,
+                  cacheWidth: (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round().clamp(400, 1600),
+                ),
               ),
             )
           else

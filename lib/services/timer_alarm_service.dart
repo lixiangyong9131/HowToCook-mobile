@@ -9,24 +9,23 @@ import 'package:timezone/timezone.dart' as tz;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../theme/app_theme.dart';
+import 'ringtone_settings.dart';
 
 /// Global navigator so alarm UI can appear after a background notification tap.
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Looping alarm + vibration until the user taps 「关闭」.
-/// Also schedules a high-importance local notification so lock-screen / background
-/// still gets a prompt within normal Android limits (exact alarm when allowed).
 class TimerAlarmService {
   TimerAlarmService._();
   static final TimerAlarmService instance = TimerAlarmService._();
 
   static const _notifId = 73001;
-  static const _channelId = 'howto_cook_timer_alarm';
   static const _payload = 'timer_alarm';
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   final AudioPlayer _player = AudioPlayer();
+  final AudioPlayer _previewPlayer = AudioPlayer();
 
   bool _initialized = false;
   bool _ringing = false;
@@ -36,14 +35,16 @@ class TimerAlarmService {
 
   bool get isRinging => _ringing;
 
+  String get _channelId =>
+      'howto_cook_timer_alarm_${RingtoneSettings.instance.selected.id}';
+
   Future<void> init() async {
     if (_initialized) return;
+    await RingtoneSettings.instance.load();
     tzdata.initializeTimeZones();
     try {
       tz.setLocalLocation(tz.getLocation('Asia/Shanghai'));
-    } catch (_) {
-      // Keep default; schedule still uses device wall clock via TZDateTime.from.
-    }
+    } catch (_) {}
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidInit);
@@ -54,50 +55,37 @@ class TimerAlarmService {
 
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
-    await android?.createNotificationChannel(
-      const AndroidNotificationChannel(
-        _channelId,
-        '步骤计时提醒',
-        description: '做饭步骤计时结束时的响铃提醒',
-        importance: Importance.max,
-        playSound: true,
-        enableVibration: true,
-        sound: RawResourceAndroidNotificationSound('timer_alarm'),
-      ),
-    );
+    await _ensureChannels(android);
     await android?.requestNotificationsPermission();
     try {
       await android?.requestExactAlarmsPermission();
-    } catch (_) {
-      // Older Android / OEM without the API.
-    }
+    } catch (_) {}
 
     await _player.setReleaseMode(ReleaseMode.loop);
     await _player.setVolume(1);
+    await _previewPlayer.setReleaseMode(ReleaseMode.stop);
+    await _previewPlayer.setVolume(1);
     try {
-      await _player.setAudioContext(
-        AudioContext(
-          android: AudioContextAndroid(
-            isSpeakerphoneOn: true,
-            stayAwake: true,
-            contentType: AndroidContentType.sonification,
-            usageType: AndroidUsageType.alarm,
-            audioFocus: AndroidAudioFocus.gainTransientMayDuck,
-          ),
-          iOS: AudioContextIOS(
-            category: AVAudioSessionCategory.playback,
-            options: const {AVAudioSessionOptions.duckOthers},
-          ),
+      final ctx = AudioContext(
+        android: AudioContextAndroid(
+          isSpeakerphoneOn: true,
+          stayAwake: true,
+          contentType: AndroidContentType.sonification,
+          usageType: AndroidUsageType.alarm,
+          audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+        ),
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.playback,
+          options: const {AVAudioSessionOptions.duckOthers},
         ),
       );
-    } catch (_) {
-      // Audio context is best-effort.
-    }
+      await _player.setAudioContext(ctx);
+      await _previewPlayer.setAudioContext(ctx);
+    } catch (_) {}
 
     final launch = await _plugin.getNotificationAppLaunchDetails();
     if (launch?.didNotificationLaunchApp == true &&
         launch?.notificationResponse?.payload == _payload) {
-      // Defer until first frame so navigator exists.
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(ringUntilDismissed(message: '⏰ 计时结束！请关闭铃声'));
       });
@@ -106,13 +94,45 @@ class TimerAlarmService {
     _initialized = true;
   }
 
+  Future<void> _ensureChannels(
+    AndroidFlutterLocalNotificationsPlugin? android,
+  ) async {
+    if (android == null) return;
+    for (final tone in RingtoneSettings.all) {
+      await android.createNotificationChannel(
+        AndroidNotificationChannel(
+          'howto_cook_timer_alarm_${tone.id}',
+          '步骤计时提醒 · ${tone.label}',
+          description: '做饭步骤计时结束时的响铃提醒',
+          importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+          sound: RawResourceAndroidNotificationSound(tone.rawName),
+        ),
+      );
+    }
+  }
+
   void _onNotificationResponse(NotificationResponse response) {
     if (response.payload == _payload) {
       unawaited(ringUntilDismissed(message: '⏰ 计时结束！请关闭铃声'));
     }
   }
 
-  /// Call when a countdown starts so background/lock screen still gets a ping.
+  Future<void> preview(BuiltInRingtone tone) async {
+    await init();
+    try {
+      await _previewPlayer.stop();
+      await _previewPlayer.play(AssetSource(tone.assetSourcePath));
+    } catch (_) {}
+  }
+
+  Future<void> stopPreview() async {
+    try {
+      await _previewPlayer.stop();
+    } catch (_) {}
+  }
+
   Future<void> scheduleEndNotification(
     Duration duration, {
     required String body,
@@ -121,11 +141,12 @@ class TimerAlarmService {
     await cancelScheduled();
     if (duration.inSeconds < 1) return;
 
+    final tone = RingtoneSettings.instance.selected;
     final when = tz.TZDateTime.now(tz.local).add(duration);
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
         _channelId,
-        '步骤计时提醒',
+        '步骤计时提醒 · ${tone.label}',
         channelDescription: '做饭步骤计时结束时的响铃提醒',
         importance: Importance.max,
         priority: Priority.max,
@@ -134,7 +155,7 @@ class TimerAlarmService {
         playSound: true,
         enableVibration: true,
         audioAttributesUsage: AudioAttributesUsage.alarm,
-        sound: const RawResourceAndroidNotificationSound('timer_alarm'),
+        sound: RawResourceAndroidNotificationSound(tone.rawName),
         visibility: NotificationVisibility.public,
         ticker: body,
       ),
@@ -155,7 +176,6 @@ class TimerAlarmService {
         payload: _payload,
       );
     } catch (_) {
-      // Exact alarm may be denied — inexact fallback.
       try {
         await _plugin.zonedSchedule(
           id: _notifId,
@@ -176,21 +196,20 @@ class TimerAlarmService {
     } catch (_) {}
   }
 
-  /// Start looping sound + vibration and show a blocking 「关闭」 dialog.
   Future<void> ringUntilDismissed({String message = '⏰ 计时结束！'}) async {
     await init();
+    await stopPreview();
     _message = message;
     if (!_ringing) {
       _ringing = true;
       try {
         await WakelockPlus.enable();
       } catch (_) {}
+      final tone = RingtoneSettings.instance.selected;
       try {
         await _player.stop();
-        await _player.play(AssetSource('sounds/timer_alarm.wav'));
-      } catch (_) {
-        // Still vibrate + dialog if audio fails.
-      }
+        await _player.play(AssetSource(tone.assetSourcePath));
+      } catch (_) {}
       _vibrateTimer?.cancel();
       _vibrateTimer = Timer.periodic(const Duration(milliseconds: 900), (_) {
         HapticFeedback.heavyImpact();
@@ -207,7 +226,6 @@ class TimerAlarmService {
     final nav = appNavigatorKey.currentState;
     final ctx = nav?.overlay?.context ?? appNavigatorKey.currentContext;
     if (ctx == null) {
-      // Retry shortly — app may still be launching from notification.
       Future<void>.delayed(const Duration(milliseconds: 400), () {
         if (_ringing) unawaited(_showDialogIfNeeded());
       });
@@ -239,9 +257,7 @@ class TimerAlarmService {
                     backgroundColor: AppTheme.coral,
                     foregroundColor: Colors.white,
                   ),
-                  onPressed: () {
-                    Navigator.of(dialogCtx).pop();
-                  },
+                  onPressed: () => Navigator.of(dialogCtx).pop(),
                   child: const Text('关闭铃声'),
                 ),
               ],

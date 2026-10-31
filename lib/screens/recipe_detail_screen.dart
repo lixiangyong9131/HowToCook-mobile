@@ -18,6 +18,7 @@ import '../widgets/process_image_viewer.dart';
 import '../widgets/snap_timeline.dart';
 import '../widgets/squeeze_done_button.dart';
 import '../widgets/video_recipes_sheet.dart';
+import '../widgets/bili_tv_icon.dart';
 import '../services/timer_alarm_service.dart';
 
 class RecipeDetailScreen extends StatefulWidget {
@@ -421,10 +422,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                       ),
                       const Spacer(),
                       IconButton(
-                        tooltip: '视频做法',
+                        tooltip: 'B 站视频做法',
                         onPressed: _openVideo,
-                        icon: const Icon(Icons.smart_display_outlined,
-                            color: Colors.white),
+                        icon: const BiliTvIcon(size: 24, color: Colors.white),
                       ),
                       _FavoriteActionButton(
                         recipeId: recipe.id,
@@ -759,10 +759,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                   expandedHeight: 248,
                   actions: [
                     IconButton(
-                      tooltip: '视频做法',
-                      onPressed: _openVideo,
-                      icon: const Icon(Icons.smart_display_outlined),
-                    ),
+                        tooltip: 'B 站视频做法',
+                        onPressed: _openVideo,
+                        icon: const BiliTvIcon(size: 24, color: AppTheme.navy),
+                      ),
                     _FavoriteActionButton(
                       recipeId: recipe.id,
                       scaleListenable: _favScaleN,
@@ -1646,6 +1646,7 @@ class _ExtrasFold extends StatelessWidget {
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
+        initiallyExpanded: true,
         tilePadding: EdgeInsets.zero,
         childrenPadding: const EdgeInsets.only(bottom: 8),
         title: const Text(

@@ -6,6 +6,7 @@ import 'services/history_store.dart';
 import 'services/process_image_service.dart';
 import 'services/recipe_repository.dart';
 import 'services/tips_repository.dart';
+import 'services/ringtone_settings.dart';
 import 'services/timer_alarm_service.dart';
 import 'theme/app_theme.dart';
 
@@ -14,6 +15,7 @@ Future<void> main() async {
   await RecipeRepository.instance.load();
   await TipsRepository.instance.load();
   await ProcessImageService.instance.ensureLoaded();
+  await RingtoneSettings.instance.load();
   await TimerAlarmService.instance.init();
   final favorites = FavoritesStore();
   await favorites.load();

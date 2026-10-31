@@ -164,21 +164,3 @@ class VideoSearchService {
     );
   }
 }
-
-/// Douyin has no stable public search-list API for third-party apps.
-/// We open the official search page / App deep link (compliant, no scraping).
-class DouyinSearch {
-  /// Web search (opens browser or system handler; may hand off to Douyin App).
-  static String webSearchUrl(String dishName) {
-    final q = Uri.encodeComponent('${dishName.trim()}的做法');
-    return 'https://www.douyin.com/search/$q?type=video';
-  }
-
-  /// In-app deep link (snssdk1128). Falls back to [webSearchUrl] if unresolved.
-  static String appSearchUrl(String dishName) {
-    final q = Uri.encodeComponent('${dishName.trim()}的做法');
-    return 'snssdk1128://search/result?keyword=$q';
-  }
-
-  static String keywordFor(String dishName) => '${dishName.trim()}的做法';
-}
