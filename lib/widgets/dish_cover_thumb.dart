@@ -76,9 +76,8 @@ class DishHeaderBackdrop extends StatelessWidget {
   }
 }
 
-
-/// List/logo thumb: top ~1/3 of the 9:16 process image (food band), not a
-/// bottom-trimmed square crop.
+/// List/logo thumb: process-image crop
+/// `left=10%`, `top=0`, `width=80%`, `height=25%` (upper quarter, middle 80%).
 class DishCoverThumb extends StatelessWidget {
   final Recipe recipe;
   final double size;
@@ -91,12 +90,8 @@ class DishCoverThumb extends StatelessWidget {
     this.borderRadius,
   });
 
-  /// Full process image is laid out at [size] × [size]*[_topFractionInverse]
-  /// then clipped to a square — so only the top 1/[_topFractionInverse] shows.
-  static const double _topFractionInverse = 3;
-
   static const _ua = {
-    'User-Agent': 'HowToCook-mobile/0.6.23',
+    'User-Agent': 'HowToCook-mobile/0.6.24',
     'Accept': 'image/jpeg,image/*;q=0.8',
   };
 
@@ -105,43 +100,41 @@ class DishCoverThumb extends StatelessWidget {
     final path = ProcessImageService.instance.assetPathFor(recipe);
     final remote = ProcessImageService.instance.remoteUrlFor(recipe);
     final radius = borderRadius ?? BorderRadius.circular(14);
-    final tall = size * _topFractionInverse;
 
-    Widget image;
+    final Widget raw;
     if (path != null) {
-      image = Image.asset(
+      raw = Image.asset(
         path,
-        fit: BoxFit.cover,
-        alignment: Alignment.topCenter,
-        width: size,
-        height: tall,
         filterQuality: FilterQuality.medium,
         gaplessPlayback: true,
         errorBuilder: (_, __, ___) => _fallback(),
       );
     } else if (remote != null && remote.isNotEmpty) {
-      image = Image.network(
+      raw = Image.network(
         remote,
-        fit: BoxFit.cover,
-        alignment: Alignment.topCenter,
-        width: size,
-        height: tall,
         filterQuality: FilterQuality.medium,
         headers: _ua,
         errorBuilder: (_, __, ___) => _fallback(),
       );
     } else {
-      image = _fallback();
+      raw = _fallback();
     }
 
+    // Align factors clip to middle 80% × top 25%; FittedBox maps that rect to thumb.
     return ClipRRect(
       borderRadius: radius,
       child: SizedBox(
         width: size,
         height: size,
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: SizedBox(width: size, height: tall, child: image),
+        child: FittedBox(
+          fit: BoxFit.fill,
+          clipBehavior: Clip.hardEdge,
+          child: Align(
+            alignment: Alignment.topCenter,
+            widthFactor: 0.8,
+            heightFactor: 0.25,
+            child: raw,
+          ),
         ),
       ),
     );
@@ -150,8 +143,12 @@ class DishCoverThumb extends StatelessWidget {
   Widget _fallback() {
     return ColoredBox(
       color: AppTheme.softCoral.withValues(alpha: 0.55),
-      child: const Center(
-        child: Icon(Icons.restaurant_rounded, color: AppTheme.navy, size: 22),
+      child: const SizedBox(
+        width: 160,
+        height: 160,
+        child: Center(
+          child: Icon(Icons.restaurant_rounded, color: AppTheme.navy, size: 48),
+        ),
       ),
     );
   }
