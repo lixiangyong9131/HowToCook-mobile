@@ -70,7 +70,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     _fanCtrl = AnimationController(
       vsync: this,
       duration: Duration(
-        milliseconds: 620 + widget.categories.length * 36,
+        milliseconds: 680 + widget.categories.length * 32,
       ),
       value: _expanded ? 1 : 0,
     );
@@ -155,19 +155,29 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     }
   }
 
+  Duration get _expandDur =>
+      Duration(milliseconds: 680 + widget.categories.length * 32);
+
+  Duration get _collapseDur =>
+      Duration(milliseconds: 780 + widget.categories.length * 36);
+
   void _expand() {
     if (_expanded || _fanCtrl.isAnimating) return;
     _coastCtrl.stop();
     HapticFeedback.mediumImpact();
     setState(() => _expanded = true);
-    _fanCtrl.animateTo(1, curve: Curves.easeInOutCubic);
+    // Linear controller; curve applied once in the builder (no double-ease).
+    _fanCtrl.animateTo(1, duration: _expandDur, curve: Curves.linear);
   }
 
   void _collapse() {
     if (!_expanded || _fanCtrl.isAnimating) return;
     HapticFeedback.selectionClick();
     // Keep fan layout until reverse finishes — avoids hard cut to wallet.
-    _fanCtrl.animateBack(0, curve: Curves.easeInOutCubic).whenComplete(() {
+    // Longer reverse + easeOutCubic visual (applied in builder) softens the end.
+    _fanCtrl
+        .animateBack(0, duration: _collapseDur, curve: Curves.linear)
+        .whenComplete(() {
       if (!mounted) return;
       if (_fanCtrl.value <= 0.001) {
         setState(() => _expanded = false);
@@ -333,11 +343,17 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
         AnimatedBuilder(
           animation: Listenable.merge([_fanCtrl, _coastCtrl]),
           builder: (context, _) {
-            final tFan = Curves.easeInOutCubic.transform(
-              _fanCtrl.value.clamp(0.0, 1.0),
-            );
+            // Single curve pass. Collapse uses easeOutCubic so the last
+            // segment decelerates instead of snapping into the wallet.
+            final raw = _fanCtrl.value.clamp(0.0, 1.0);
+            final tFan = (_fanCtrl.status == AnimationStatus.reverse ||
+                    (_fanCtrl.status == AnimationStatus.dismissed &&
+                        !_expanded))
+                ? Curves.easeOutCubic.transform(raw)
+                : Curves.easeInOutCubic.transform(raw);
             final height = collapsedH + (expandedH - collapsedH) * tFan;
             // Fan while expanded or mid-animation; wallet only when fully folded.
+            // Fan cards lerp to wallet slots as t→0 so the handoff is seamless.
             final showFan = _expanded || _fanCtrl.value > 0.001;
             return SizedBox(
               height: height + 8,
@@ -360,35 +376,94 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
 
   Widget _buildFanCard(int i, int n) {
     final cat = widget.categories[i];
-    final start = (i * 48) / (_fanCtrl.duration?.inMilliseconds ?? 1);
-    final end = (start + 0.62).clamp(0.0, 1.0);
-    final local = Curves.easeOutCubic.transform(
-      ((_fanCtrl.value - start) / (end - start).clamp(0.001, 1.0))
-          .clamp(0.0, 1.0),
-    );
-    final t =
-        Curves.easeInOutCubic.transform(local.clamp(0.0, 1.0)).clamp(0.0, 1.0);
-    final stackTop = i * _peek;
+    // Light stagger that reverses cleanly (back cards settle first on collapse).
+    final stagger = (i / n.clamp(1, 99)) * 0.22;
+    final raw = _fanCtrl.value.clamp(0.0, 1.0);
+    final localRaw =
+        ((raw - stagger) / (1.0 - stagger).clamp(0.001, 1.0)).clamp(0.0, 1.0);
+    final collapsing = _fanCtrl.status == AnimationStatus.reverse;
+    final t = (collapsing
+            ? Curves.easeOutCubic.transform(localRaw)
+            : Curves.easeInOutCubic.transform(localRaw))
+        .clamp(0.0, 1.0);
+
+    final focusOrigin = _upperPeek * _visibleAbove.toDouble() + 6;
+    final wallet = _walletSlot(i, n, focusOrigin);
     final listTop = i * (_cardH + _gap);
-    final top = stackTop + (listTop - stackTop) * t.clamp(0.0, 1.0);
-    final scale =
-        1.0 - (1 - t.clamp(0.0, 1.0)) * (n - 1 - i).clamp(0, 5) * 0.015;
+
+    // t=0 → wallet slot (matches folded deck); t=1 → full list row.
+    final top = wallet.top + (listTop - wallet.top) * t;
+    final scale = wallet.scale + (1.0 - wallet.scale) * t;
+    final sideInset = wallet.sideInset * (1.0 - t);
+    final opacity = wallet.opacity + (1.0 - wallet.opacity) * t;
+    final elev = wallet.elev + (10.0 - wallet.elev) * t;
 
     return Positioned(
       top: top,
-      left: 0,
-      right: 0,
-      child: Transform.scale(
-        scale: scale,
-        alignment: Alignment.topCenter,
-        child: GestureDetector(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            widget.onOpen(cat);
-          },
-          child: _cardBody(cat, i),
+      left: sideInset,
+      right: sideInset,
+      child: Opacity(
+        opacity: opacity.clamp(0.0, 1.0),
+        child: Transform.scale(
+          scale: scale,
+          alignment: Alignment.topCenter,
+          child: GestureDetector(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              widget.onOpen(cat);
+            },
+            child: _cardBody(cat, i, elevation: elev),
+          ),
         ),
       ),
+    );
+  }
+
+  /// Wallet-deck layout for one card — shared by folded pile and fan→wallet lerp.
+  ({double top, double scale, double opacity, double sideInset, double elev})
+      _walletSlot(int index, int n, double focusOrigin) {
+    final rel = _circularRel(index);
+    if (rel < -(_visibleAbove + 1.15) || rel > (_visibleBehind + 1.15)) {
+      // Off-screen slots: park above/below so they still lerp in gently.
+      final offTop = rel < 0
+          ? focusOrigin - (_visibleAbove + 1.2) * _upperPeek
+          : focusOrigin + (_visibleBehind + 1.2) * _peek;
+      return (top: offTop, scale: 0.9, opacity: 0.0, sideInset: 14, elev: 0);
+    }
+
+    final depthUp = (-rel).clamp(0.0, _visibleAbove + 0.8);
+    final depthDown = rel.clamp(0.0, _visibleBehind + 0.8);
+    final upT = Curves.easeInOutCubic.transform(
+      (depthUp / (_visibleAbove + 0.8)).clamp(0.0, 1.0),
+    );
+    final downT = Curves.easeInOutCubic.transform(
+      (depthDown / (_visibleBehind + 0.8)).clamp(0.0, 1.0),
+    );
+
+    late double top;
+    late double scale;
+    late double opacity;
+    late double sideInset;
+    late double elev;
+    if (rel <= 0) {
+      top = focusOrigin - depthUp * _upperPeek;
+      scale = 1.0 - upT * 0.06;
+      opacity = (1.0 - upT * 0.45).clamp(0.25, 1.0);
+      sideInset = 10.0 * upT;
+      elev = 10.0 * (1.0 - upT);
+    } else {
+      top = focusOrigin + depthDown * _peek;
+      scale = 1.0 - downT * 0.07;
+      opacity = (1.0 - downT * 0.35).clamp(0.3, 1.0);
+      sideInset = 12.0 * downT;
+      elev = 10.0 * (1.0 - downT);
+    }
+    return (
+      top: top,
+      scale: scale,
+      opacity: opacity,
+      sideInset: sideInset,
+      elev: elev,
     );
   }
 

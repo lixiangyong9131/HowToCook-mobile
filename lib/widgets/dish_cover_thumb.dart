@@ -77,7 +77,8 @@ class DishHeaderBackdrop extends StatelessWidget {
 }
 
 
-/// Full-row list background: top **1/4** of the process image, width-filled.
+/// Full-row list background: process-image band as width-filled cover.
+/// Skips the top ~1/8 (often letterbox / chrome), then takes the next ~1/4.
 /// Puts [child] above a readability scrim (no side logo thumb).
 class DishCoverRowBackground extends StatelessWidget {
   final Recipe? recipe;
@@ -95,8 +96,18 @@ class DishCoverRowBackground extends StatelessWidget {
     this.padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
   });
 
+  /// Ignore this fraction from the very top of the process image.
+  static const double skipTop = 0.125;
+
+  /// Vertical band height (of full image) used as the row cover.
+  static const double bandHeight = 0.25;
+
+  /// Align.y so [skipTop, skipTop+bandHeight] is the visible band.
+  /// y = 2*skipTop/(1-bandHeight) - 1
+  static const Alignment _bandAlign = Alignment(0, -2 / 3);
+
   static const _ua = {
-    'User-Agent': 'HowToCook-mobile/0.6.25',
+    'User-Agent': 'HowToCook-mobile/0.6.26',
     'Accept': 'image/jpeg,image/*;q=0.8',
   };
 
@@ -133,16 +144,16 @@ class DishCoverRowBackground extends StatelessWidget {
         children: [
           // Fallback / base fill.
           Positioned.fill(child: ColoredBox(color: fallbackColor)),
-          // Top 1/4 of process image, scaled to cover the whole row.
+          // Band [skipTop, skipTop+bandHeight], cover-fitted to the row.
           if (image != null)
             Positioned.fill(
               child: FittedBox(
                 fit: BoxFit.cover,
-                alignment: Alignment.topCenter,
+                alignment: Alignment.center,
                 clipBehavior: Clip.hardEdge,
                 child: Align(
-                  alignment: Alignment.topCenter,
-                  heightFactor: 0.25,
+                  alignment: _bandAlign,
+                  heightFactor: bandHeight,
                   child: image,
                 ),
               ),

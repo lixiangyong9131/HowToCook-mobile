@@ -39,6 +39,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   bool _hasProcessImage = false;
   /// Immersive side tabs: null = image only, 0 = 文字描述, 1 = 必备原料.
   int? _immersivePanel;
+  /// Drives slide; kept true until exit animation finishes.
+  bool _panelOpen = false;
   /// Step indices whose timer finished → stamped 「计时已完成」.
   final Set<int> _timerDoneSteps = {};
   /// Which step the running timer belongs to (null = app-bar / free timer).
@@ -487,16 +489,21 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             top: topPad + 52,
             right: 12,
             child: _ImmersiveTabPills(
-              selected: _immersivePanel,
+              selected: _panelOpen ? _immersivePanel : null,
               onSelect: (i) {
                 HapticFeedback.selectionClick();
                 setState(() {
-                  _immersivePanel = _immersivePanel == i ? null : i;
+                  if (_immersivePanel == i && _panelOpen) {
+                    _panelOpen = false; // animate closed
+                  } else {
+                    _immersivePanel = i;
+                    _panelOpen = true;
+                  }
                 });
               },
             ),
           ),
-          // Sliding content panel for the selected tab.
+          // Sliding content panel — stays mounted through exit so collapse is smooth.
           if (_immersivePanel != null)
             Positioned(
               left: 0,
@@ -504,7 +511,15 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               bottom: 0,
               top: MediaQuery.sizeOf(context).height * 0.32,
               child: _ImmersiveContentPanel(
-                onClose: () => setState(() => _immersivePanel = null),
+                open: _panelOpen,
+                onClose: () => setState(() => _panelOpen = false),
+                onClosed: () {
+                  if (!mounted) return;
+                  setState(() {
+                    _immersivePanel = null;
+                    _panelOpen = false;
+                  });
+                },
                 child: _immersivePanel == 0
                     ? _buildDescPanel()
                     : _buildIngredientsPanel(),
@@ -1187,52 +1202,123 @@ class _ImmersiveTabPills extends StatelessWidget {
   }
 }
 
-class _ImmersiveContentPanel extends StatelessWidget {
+class _ImmersiveContentPanel extends StatefulWidget {
   final Widget child;
+  final bool open;
   final VoidCallback onClose;
+  final VoidCallback onClosed;
 
   const _ImmersiveContentPanel({
     required this.child,
+    required this.open,
     required this.onClose,
+    required this.onClosed,
   });
 
   @override
+  State<_ImmersiveContentPanel> createState() => _ImmersiveContentPanelState();
+}
+
+class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _t;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 380),
+      reverseDuration: const Duration(milliseconds: 420),
+      value: widget.open ? 0 : 1,
+    );
+    _t = CurvedAnimation(
+      parent: _ctrl,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    if (widget.open) {
+      _ctrl.forward();
+    }
+    _ctrl.addStatusListener(_onStatus);
+  }
+
+  void _onStatus(AnimationStatus s) {
+    if (s == AnimationStatus.dismissed) {
+      widget.onClosed();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ImmersiveContentPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.open != oldWidget.open) {
+      if (widget.open) {
+        _ctrl.forward();
+      } else {
+        _ctrl.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.removeStatusListener(_onStatus);
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        decoration: const BoxDecoration(
-          color: AppTheme.bg,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          boxShadow: [
-            BoxShadow(
-              color: Color(0x66000000),
-              blurRadius: 24,
-              offset: Offset(0, -4),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppTheme.muted.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(999),
+    return AnimatedBuilder(
+      animation: _t,
+      builder: (context, child) {
+        final v = _t.value;
+        return Opacity(
+          opacity: v.clamp(0.0, 1.0),
+          child: Transform.translate(
+            offset: Offset(0, (1 - v) * 56),
+            child: child,
+          ),
+        );
+      },
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AppTheme.bg,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            boxShadow: [
+              BoxShadow(
+                color: Color(0x66000000),
+                blurRadius: 24,
+                offset: Offset(0, -4),
               ),
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                tooltip: '关闭',
-                onPressed: onClose,
-                icon: const Icon(Icons.close_rounded, color: AppTheme.muted),
+            ],
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.muted.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(999),
+                ),
               ),
-            ),
-            Expanded(child: child),
-          ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: IconButton(
+                  tooltip: '关闭',
+                  onPressed: widget.onClose,
+                  icon: const Icon(Icons.close_rounded, color: AppTheme.muted),
+                ),
+              ),
+              Expanded(child: widget.child),
+            ],
+          ),
         ),
       ),
     );
