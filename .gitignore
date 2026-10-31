@@ -48,3 +48,7 @@ app.*.map.json
 key.properties
 *.jks
 *.keystore
+
+# local image generation scratch
+_gen_process_images/
+_refs/
