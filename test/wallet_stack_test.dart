@@ -34,18 +34,21 @@ void main() {
     expect(find.text('展开'), findsOneWidget);
     expect(find.textContaining('循环甩动'), findsNothing);
 
-    // Tight stack: front card is tall, the next card only shows a short lip.
+    // Seven layers: front card plus six title lips. The card after that stays off.
     expect(find.text('分类0'), findsOneWidget);
-    expect(find.text('分类1'), findsOneWidget);
-    expect(find.text('分类3'), findsOneWidget);
-    expect(find.text('分类4'), findsNothing);
+    expect(find.text('分类6'), findsOneWidget);
+    expect(find.text('分类7'), findsNothing);
     final front = tester.getRect(find.byKey(const ValueKey('stack-card-c0')));
     final behind = tester.getRect(find.byKey(const ValueKey('stack-card-c1')));
+    final topLip = tester.getRect(find.byKey(const ValueKey('stack-card-c6')));
     expect(front.height, greaterThan(240));
     expect(behind.height, front.height);
     final lip = front.top - behind.top;
-    expect(lip, greaterThan(28));
-    expect(lip, lessThan(52));
+    expect(lip, greaterThan(16));
+    expect(lip, lessThan(30));
+    // Six lips stack above the front card, so the furthest one sits higher.
+    expect(topLip.top, lessThan(behind.top));
+    expect(front.top - topLip.top, closeTo(lip * 6, 1));
   });
 
   testWidgets('fling can coast across cards (multi-card inertia)', (

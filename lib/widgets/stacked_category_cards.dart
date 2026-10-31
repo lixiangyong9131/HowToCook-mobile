@@ -8,9 +8,10 @@ import '../theme/doodle_icons.dart';
 
 /// Tight vertical stack of category cards (not a PageView).
 ///
-/// Folded: cards share one column on a navy stage. Cards behind the front
-/// one only show a short title lip (tighter than a loose “access card”
-/// stack). The front card is tall — cover mark plus the category name.
+/// Folded: cards are full content width on the page background. About seven
+/// layers show at once (front card plus the title lips behind it). Each lip
+/// is short so the pile still fits. The front card is tall — cover mark plus
+/// the category name. No dark frame around the pile.
 /// Finger up/down still free-scrolls the pile (**infinite loop**). Release
 /// coasts with friction, then springs to the nearest card. Tap the front
 /// card to open.
@@ -45,15 +46,16 @@ class StackedCategoryCards extends StatefulWidget {
 
 class _StackedCategoryCardsState extends State<StackedCategoryCards>
     with TickerProviderStateMixin {
-  /// Title lip of each card behind the front one.
-  /// A loose reference stack shows ~64–72px of the card behind; this is
-  /// about 60% of that, so the pile reads tighter.
-  static const _peek = 40.0;
+  /// Title lip of each card behind the front one. Short enough that six
+  /// lips plus the front card (about seven layers) fit on one screen.
+  static const _peek = 22.0;
 
   /// Expanded-list row height (folded front card is taller — see [_frontH]).
   static const _cardH = 108.0;
   static const _gap = 12.0;
-  static const _visibleBehind = 3;
+
+  /// Six cards behind the front one → seven title edges visible.
+  static const _visibleBehind = 6;
   static const _stackRadius = 28.0;
 
   /// Finger pixels per one card of [offset].
@@ -204,12 +206,17 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     return (i % n + n) % n;
   }
 
-  /// Shortest signed distance from focus [_offset] to card [index] on a ring.
+  /// Deck distance from the front card. 0 is the front card, 1.. are the
+  /// next cards in swipe order (wrapping only after the last). A value in
+  /// (-1, 0) is the card that just passed and is sliding off. This is not the
+  /// shortest ring distance — that would hide lips once half the deck is
+  /// behind the front card, so seven layers could never show.
   double _circularRel(int index) {
     final n = _n;
     if (n <= 0) return 0;
     var rel = index - _offset;
-    rel -= n * (rel / n).round();
+    rel -= n * (rel / n).floor();
+    if (rel > n - 1) rel -= n;
     return rel;
   }
 
@@ -354,29 +361,11 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
                 : Curves.easeInOutCubic.transform(raw);
             final height = collapsedH + (expandedH - collapsedH) * tFan;
             final showFan = _expanded || _fanCtrl.value > 0.001;
-            final pile = SizedBox(
+            return SizedBox(
               height: showFan ? height : collapsedH,
               child: showFan
                   ? _buildExpanded(n, frontH)
                   : _buildWallet(n, frontH),
-            );
-            if (showFan) return pile;
-            return DecoratedBox(
-              decoration: BoxDecoration(
-                color: AppTheme.navy,
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.navy.withValues(alpha: 0.28),
-                    blurRadius: 22,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 14, 12, 16),
-                child: pile,
-              ),
             );
           },
         ),
@@ -495,13 +484,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
             HapticFeedback.lightImpact();
             widget.onOpen(cat);
           },
-          child: _cardBody(
-            cat,
-            index,
-            height: frontH,
-            elevation: slot.elev,
-            emphasize: isFront,
-          ),
+          child: _cardBody(cat, index, height: frontH, elevation: slot.elev),
         ),
       ),
     );
@@ -512,7 +495,6 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
     int paletteIndex, {
     required double height,
     double elevation = 10,
-    bool emphasize = false,
   }) {
     final color = _stackColors[paletteIndex % _stackColors.length];
     final lightFg = color.computeLuminance() < 0.62;
@@ -526,16 +508,11 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(_stackRadius),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: emphasize ? 0.55 : 0.28),
-          width: emphasize ? 1.4 : 1,
-        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18 + elevation * 0.006),
-            blurRadius: 12,
-            spreadRadius: -3,
-            offset: Offset(0, 5 + elevation * 0.15),
+            color: AppTheme.navy.withValues(alpha: 0.06 + elevation * 0.002),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -556,9 +533,9 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: fg,
-                        fontSize: 16,
+                        fontSize: 13,
                         fontWeight: FontWeight.w900,
-                        height: 1.05,
+                        height: 1.0,
                       ),
                     ),
                   ),
@@ -567,7 +544,7 @@ class _StackedCategoryCardsState extends State<StackedCategoryCards>
                     '$count 道',
                     style: TextStyle(
                       color: fg.withValues(alpha: 0.82),
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
