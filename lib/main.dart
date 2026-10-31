@@ -6,6 +6,7 @@ import 'services/history_store.dart';
 import 'services/process_image_service.dart';
 import 'services/recipe_repository.dart';
 import 'services/tips_repository.dart';
+import 'services/timer_alarm_service.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -13,6 +14,7 @@ Future<void> main() async {
   await RecipeRepository.instance.load();
   await TipsRepository.instance.load();
   await ProcessImageService.instance.ensureLoaded();
+  await TimerAlarmService.instance.init();
   final favorites = FavoritesStore();
   await favorites.load();
   final history = HistoryStore();
@@ -38,6 +40,7 @@ class HowToCookApp extends StatelessWidget {
       child: HistoryScope(
         store: history,
         child: MaterialApp(
+          navigatorKey: appNavigatorKey,
           title: '程序员做饭指南',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),

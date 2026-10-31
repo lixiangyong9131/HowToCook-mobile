@@ -18,6 +18,7 @@ import '../widgets/process_image_viewer.dart';
 import '../widgets/snap_timeline.dart';
 import '../widgets/squeeze_done_button.dart';
 import '../widgets/video_recipes_sheet.dart';
+import '../services/timer_alarm_service.dart';
 
 class RecipeDetailScreen extends StatefulWidget {
   final Recipe recipe;
@@ -214,6 +215,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   @override
   void dispose() {
     _timer?.cancel();
+    unawaited(TimerAlarmService.instance.stop());
     _remainingN.dispose();
     _favScaleN.dispose();
     _totalN.dispose();
@@ -233,9 +235,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
 
   void _startTimer(Duration d, {int? stepIndex}) {
     _timer?.cancel();
+    unawaited(TimerAlarmService.instance.stop());
     _activeTimerStep = stepIndex;
     _totalN.value = d;
     _remainingN.value = d;
+    final body = stepIndex != null
+        ? '第 ${stepIndex + 1} 步计时结束，请回来查看'
+        : '计时结束，请回来查看';
+    unawaited(
+      TimerAlarmService.instance.scheduleEndNotification(d, body: body),
+    );
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       final rem = _remainingN.value;
       if (rem == null) return;
@@ -250,16 +259,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             setState(() => _timerDoneSteps.add(step));
           }
         }
-        if (mounted) {
-          HapticFeedback.heavyImpact();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                step != null ? '⏰ 第 ${step + 1} 步计时完成' : '⏰ 计时结束！',
-              ),
-            ),
-          );
-        }
+        final msg =
+            step != null ? '⏰ 第 ${step + 1} 步计时完成' : '⏰ 计时结束！';
+        unawaited(
+          TimerAlarmService.instance.ringUntilDismissed(message: msg),
+        );
       } else {
         _remainingN.value = rem - const Duration(seconds: 1);
       }
@@ -271,6 +275,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     _activeTimerStep = null;
     _remainingN.value = null;
     _totalN.value = null;
+    unawaited(TimerAlarmService.instance.stop());
   }
 
   Future<void> _openTimerPicker([Duration? hint, int? stepIndex]) async {
