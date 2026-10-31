@@ -5,7 +5,9 @@ import '../models/recipe.dart';
 import '../routes/recipe_nav.dart';
 import '../services/recipe_repository.dart';
 import '../theme/app_theme.dart';
+import '../utils/recipe_meta.dart';
 import '../widgets/recipe_card.dart';
+import '../widgets/recipe_filter_bar.dart';
 
 class SearchScreen extends StatefulWidget {
   final String? initialQuery;
@@ -17,7 +19,11 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   late final TextEditingController _controller;
-  List<Recipe> _results = const [];
+  List<Recipe> _raw = const [];
+  DifficultyFilter _difficulty = DifficultyFilter.all;
+  TimeFilter _time = TimeFilter.all;
+  CalorieFilter _calories = CalorieFilter.all;
+  RecipeSort _sort = RecipeSort.name;
 
   @override
   void initState() {
@@ -31,7 +37,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _runSearch(String value, {bool persist = false}) {
-    setState(() => _results = RecipeRepository.instance.search(value));
+    setState(() => _raw = RecipeRepository.instance.search(value));
     if (persist && value.trim().isNotEmpty) {
       HistoryScope.of(context).addSearch(value.trim());
     }
@@ -50,6 +56,13 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     final q = _controller.text.trim();
+    final results = applyRecipeFilters(
+      _raw,
+      difficulty: _difficulty,
+      time: _time,
+      calories: _calories,
+      sort: _sort,
+    );
     return Scaffold(
       backgroundColor: AppTheme.bg,
       appBar: AppBar(
@@ -88,38 +101,53 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
       body: q.isEmpty
           ? const _EmptyHint(text: '试试「番茄」「鸡蛋」「汤」')
-          : _results.isEmpty
-              ? _EmptyHint(text: '没有搜到与 “$q” 相关的菜谱')
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12, left: 4),
-                      child: Text(
-                        '找到 ${_results.length} 个结果',
-                        style: const TextStyle(
-                          color: AppTheme.muted,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    ..._results.asMap().entries.map((e) {
-                      final r = e.value;
-                      final color =
-                          categoryColors[r.categoryId] ?? AppTheme.neon;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: RecipeCard(
-                          index: e.key + 1,
-                          recipe: r,
-                          accent: color,
-                          showCategory: true,
-                          onTap: () => openRecipeDetail(context, recipe: r),
-                        ),
-                      );
-                    }),
-                  ],
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                  child: RecipeFilterBar(
+                    difficulty: _difficulty,
+                    time: _time,
+                    calories: _calories,
+                    sort: _sort,
+                    resultCount: results.length,
+                    onDifficulty: (v) => setState(() => _difficulty = v),
+                    onTime: (v) => setState(() => _time = v),
+                    onCalories: (v) => setState(() => _calories = v),
+                    onSort: (v) => setState(() => _sort = v),
+                  ),
                 ),
+                Expanded(
+                  child: results.isEmpty
+                      ? _EmptyHint(
+                          text: _raw.isEmpty
+                              ? '没有搜到与 “$q” 相关的菜谱'
+                              : '没有符合筛选的结果',
+                        )
+                      : ListView(
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                          children: [
+                            for (var i = 0; i < results.length; i++)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: RecipeCard(
+                                  index: i + 1,
+                                  recipe: results[i],
+                                  accent: categoryAccent(
+                                    results[i].categoryId,
+                                    i,
+                                  ),
+                                  onTap: () => openRecipeDetail(
+                                    context,
+                                    recipe: results[i],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -131,22 +159,17 @@ class _EmptyHint extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: AppTheme.lavender,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.search, size: 28),
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: AppTheme.muted,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
           ),
-          const SizedBox(height: 14),
-          Text(text, style: const TextStyle(color: AppTheme.muted)),
-        ],
+        ),
       ),
     );
   }

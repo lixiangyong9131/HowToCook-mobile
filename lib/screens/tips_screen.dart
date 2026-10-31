@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/tip.dart';
+import '../services/process_image_service.dart';
 import '../services/tips_repository.dart';
 import '../theme/app_theme.dart';
 import 'tip_detail_screen.dart';
@@ -80,7 +81,9 @@ class TipsScreen extends StatelessWidget {
             ),
             Expanded(
               child: tips.isEmpty
-                  ? const Center(child: Text('暂无小知识', style: TextStyle(color: AppTheme.muted)))
+                  ? const Center(
+                      child: Text('暂无小知识',
+                          style: TextStyle(color: AppTheme.muted)))
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(22, 4, 22, 40),
                       children: [
@@ -89,10 +92,12 @@ class TipsScreen extends StatelessWidget {
                             name: g.name,
                             icon: _groupIcon(g.id),
                             color: _groupColor(g.id),
-                            count: tips.where((t) => t.groupId == g.id).length,
+                            count:
+                                tips.where((t) => t.groupId == g.id).length,
                           ),
                           const SizedBox(height: 10),
-                          for (final tip in tips.where((t) => t.groupId == g.id)) ...[
+                          for (final tip
+                              in tips.where((t) => t.groupId == g.id)) ...[
                             _TipCard(
                               tip: tip,
                               accent: _groupColor(g.id),
@@ -191,6 +196,9 @@ class _TipCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final jpeg = ProcessImageService.instance.tipAssetPath(tip.path);
+    final placeholder =
+        ProcessImageService.tipPlaceholderAsset(tip.path);
     return Material(
       color: Colors.white,
       elevation: 0,
@@ -202,19 +210,32 @@ class _TipCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+          padding: const EdgeInsets.fromLTRB(10, 10, 12, 10),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: accent,
-                  borderRadius: BorderRadius.circular(14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: SizedBox(
+                  width: 64,
+                  height: 64,
+                  child: jpeg != null
+                      ? Image.asset(
+                          jpeg,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              _PlaceholderThumb(
+                            accent: accent,
+                            asset: placeholder,
+                            icon: icon,
+                          ),
+                        )
+                      : _PlaceholderThumb(
+                          accent: accent,
+                          asset: placeholder,
+                          icon: icon,
+                        ),
                 ),
-                child: Icon(icon, color: AppTheme.navy, size: 24),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -252,6 +273,33 @@ class _TipCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlaceholderThumb extends StatelessWidget {
+  final Color accent;
+  final String asset;
+  final IconData icon;
+  const _PlaceholderThumb({
+    required this.accent,
+    required this.asset,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: accent,
+      child: Center(
+        child: Image.asset(
+          asset,
+          width: 36,
+          height: 36,
+          errorBuilder: (_, __, ___) =>
+              Icon(icon, color: AppTheme.navy, size: 28),
         ),
       ),
     );

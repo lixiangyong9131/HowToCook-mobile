@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../main.dart';
 import '../models/recipe.dart';
@@ -9,6 +10,7 @@ import '../services/process_image_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/doodle_icons.dart';
 import '../utils/recipe_parser.dart';
+import '../utils/servings_scale.dart';
 import '../widgets/inertia_timer_picker.dart';
 import '../widgets/linked_checklist.dart';
 import '../widgets/dish_cover_thumb.dart';
@@ -47,6 +49,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   final Set<int> _timerDoneSteps = {};
   /// Which step the running timer belongs to (null = app-bar / free timer).
   int? _activeTimerStep;
+  /// 份数：原料用量按「计算」基准 × 此值。
+  int _servings = 1;
 
   @override
   void initState() {
@@ -106,6 +110,25 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
       if (s.title.contains('计算')) return s;
     }
     return null;
+  }
+
+  RecipeSection? get _extraSection {
+    for (final s in _parsed.sections) {
+      if (s.title.contains('附加')) return s;
+    }
+    return null;
+  }
+
+  RecipeSection? get _scaledIngredients {
+    final base = _mergedIngredients;
+    if (base == null) return null;
+    if (_servings <= 1) return base;
+    return RecipeSection(
+      title: base.title,
+      body: base.body,
+      items: scaleIngredientLines(base.items, _servings),
+      isSteps: false,
+    );
   }
 
   /// Merge calc amounts into each ingredient line (鸡蛋 2 个), not dumped below.
@@ -175,6 +198,15 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
         label: '必备原料和工具',
         kind: _TabKind.ingredients,
         section: ing,
+      ));
+    }
+    final extra = _extraSection;
+    if (extra != null &&
+        (extra.items.isNotEmpty || extra.body.trim().isNotEmpty)) {
+      tabs.add(_DetailTab(
+        label: '附加内容',
+        kind: _TabKind.extras,
+        section: extra,
       ));
     }
     return tabs;
@@ -659,12 +691,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               style: TextStyle(color: AppTheme.muted),
             ),
           ),
+        if (_extraSection case final extra?) ...[
+          const SizedBox(height: 18),
+          _ExtrasFold(section: extra),
+        ],
       ],
     );
   }
 
   Widget _buildIngredientsPanel() {
-    final ing = _mergedIngredients;
+    final ing = _scaledIngredients;
     if (ing == null) {
       return const Center(
         child: Text('暂无原料信息', style: TextStyle(color: AppTheme.muted)),
@@ -675,6 +711,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
       isIngredient: true,
       isSteps: false,
       onPickTimer: _openTimerPicker,
+      servings: _servings,
+      onServingsChanged: (v) => setState(() => _servings = v),
     );
   }
 
@@ -914,10 +952,17 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
         );
       case _TabKind.ingredients:
         return _SectionBody(
-          section: t.section!,
+          section: RecipeSection(
+            title: t.section!.title,
+            body: t.section!.body,
+            items: scaleIngredientLines(t.section!.items, _servings),
+            isSteps: false,
+          ),
           isIngredient: true,
           isSteps: false,
           onPickTimer: _openTimerPicker,
+          servings: _servings,
+          onServingsChanged: (v) => setState(() => _servings = v),
           onAllIngredients: () {
             final idx = _detailTabs.indexWhere(
               (e) =>
@@ -926,6 +971,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             if (idx >= 0) _tabs.animateTo(idx);
           },
         );
+      case _TabKind.extras:
+        return _ExtrasBody(section: t.section!);
       case _TabKind.empty:
         return const Center(
           child: Column(
@@ -954,7 +1001,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   }
 }
 
-enum _TabKind { processImage, steps, ingredients, empty }
+enum _TabKind { processImage, steps, ingredients, extras, empty }
 
 class _DetailTab {
   final String label;
@@ -975,6 +1022,8 @@ class _SectionBody extends StatelessWidget {
   final void Function(int stepIndex, Duration duration)? onStartStepTimer;
   final Set<int> timerCompletedSteps;
   final VoidCallback? onAllIngredients;
+  final int servings;
+  final ValueChanged<int>? onServingsChanged;
 
   const _SectionBody({
     required this.section,
@@ -984,6 +1033,8 @@ class _SectionBody extends StatelessWidget {
     this.onStartStepTimer,
     this.timerCompletedSteps = const {},
     this.onAllIngredients,
+    this.servings = 1,
+    this.onServingsChanged,
   });
 
   @override
@@ -1004,6 +1055,13 @@ class _SectionBody extends StatelessWidget {
       return ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
         children: [
+          if (onServingsChanged != null) ...[
+            _ServingsStepper(
+              servings: servings,
+              onChanged: onServingsChanged!,
+            ),
+            const SizedBox(height: 12),
+          ],
           LinkedChecklist(
             items: section.items,
             title: '原料进度',
@@ -1429,4 +1487,165 @@ class _PinnedProcessImageState extends State<_PinnedProcessImage>
     super.build(context);
     return _viewer;
   }
+}
+
+
+class _ServingsStepper extends StatelessWidget {
+  final int servings;
+  final ValueChanged<int> onChanged;
+  const _ServingsStepper({required this.servings, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE8E8ED)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.restaurant_rounded, size: 18, color: AppTheme.coral),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              '份数（按计算比例）',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+            ),
+          ),
+          _RoundBtn(
+            icon: Icons.remove_rounded,
+            onTap: servings > 1 ? () => onChanged(servings - 1) : null,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              '$servings',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: AppTheme.ink,
+              ),
+            ),
+          ),
+          _RoundBtn(
+            icon: Icons.add_rounded,
+            onTap: servings < 20 ? () => onChanged(servings + 1) : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoundBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+  const _RoundBtn({required this.icon, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: onTap == null
+          ? AppTheme.navy.withValues(alpha: 0.06)
+          : AppTheme.neon.withValues(alpha: 0.55),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap == null
+            ? null
+            : () {
+                HapticFeedback.selectionClick();
+                onTap!();
+              },
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(icon, size: 20, color: AppTheme.navy),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExtrasBody extends StatelessWidget {
+  final RecipeSection section;
+  const _ExtrasBody({required this.section});
+
+  @override
+  Widget build(BuildContext context) {
+    final md = _extrasMarkdown(section);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+      children: [
+        const Text(
+          '注意点 · 小技巧 · 参考',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+            color: AppTheme.ink,
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (md.trim().isEmpty)
+          const Text('暂无附加内容', style: TextStyle(color: AppTheme.muted))
+        else
+          MarkdownBody(
+            data: md,
+            styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+              p: const TextStyle(fontSize: 15, height: 1.55, color: AppTheme.ink),
+              listBullet: const TextStyle(color: AppTheme.coral),
+              a: const TextStyle(
+                color: AppTheme.coral,
+                fontWeight: FontWeight.w700,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ExtrasFold extends StatelessWidget {
+  final RecipeSection section;
+  const _ExtrasFold({required this.section});
+
+  @override
+  Widget build(BuildContext context) {
+    final md = _extrasMarkdown(section);
+    if (md.trim().isEmpty) return const SizedBox.shrink();
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 8),
+        title: const Text(
+          '附加内容',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+        ),
+        children: [
+          MarkdownBody(
+            data: md,
+            styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+              p: const TextStyle(fontSize: 14, height: 1.5, color: AppTheme.ink),
+              listBullet: const TextStyle(color: AppTheme.coral),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _extrasMarkdown(RecipeSection section) {
+  final buf = StringBuffer();
+  if (section.body.trim().isNotEmpty) {
+    buf.writeln(section.body.trim());
+  }
+  for (final item in section.items) {
+    buf.writeln('- $item');
+  }
+  return buf.toString().trim();
 }

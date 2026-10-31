@@ -140,7 +140,38 @@ class ProcessImageService {
     return null;
   }
 
-  Future<Directory> _cacheDir() async {
+  /// Tip process-card key: `tips/learn/学习焯水.md` → `tips/学习焯水`.
+  String? tipKeyForPath(String tipPath) {
+    final stem = p.basenameWithoutExtension(tipPath);
+    if (stem.isEmpty) return null;
+    final key = 'tips/$stem';
+    return _keys.contains(key) ? key : null;
+  }
+
+  bool hasTipImage(String tipPath) => tipKeyForPath(tipPath) != null;
+
+  String? tipAssetPath(String tipPath) {
+    final key = tipKeyForPath(tipPath);
+    if (key == null) return null;
+    return assetPathForKey(key);
+  }
+
+  /// Doodle / icon placeholder when a tip has prose but no bundled jpeg.
+  static String tipPlaceholderAsset(String tipPath) {
+    final stem = p.basenameWithoutExtension(tipPath);
+    if (stem.contains('用刀') || stem.contains('刀')) {
+      return 'assets/icons/doodle/cutlery.png';
+    }
+    if (stem.contains('洗碗')) {
+      return 'assets/icons/doodle/kitchen.png';
+    }
+    if (stem.contains('压力') || stem.contains('高压')) {
+      return 'assets/icons/doodle/cooking-pot.png';
+    }
+    return 'assets/icons/doodle/chef-hat.png';
+  }
+
+    Future<Directory> _cacheDir() async {
     final root = await getApplicationSupportDirectory();
     final dir = Directory(p.join(root.path, 'process_images'));
     if (!await dir.exists()) await dir.create(recursive: true);
