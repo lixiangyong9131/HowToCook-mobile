@@ -1,7 +1,7 @@
 name: how_to_cook
 description: 程序员做饭指南移动端 — 离线菜谱，致敬 Anduin2017/HowToCook
 publish_to: 'none'
-version: 0.6.29+37
+version: 0.6.30+38
 
 environment:
   sdk: ^3.9.2

@@ -201,8 +201,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
       ));
     }
     final extra = _extraSection;
-    if (extra != null &&
-        (extra.items.isNotEmpty || extra.body.trim().isNotEmpty)) {
+    if (extra != null && extrasMarkdownOf(extra).isNotEmpty) {
       tabs.add(_DetailTab(
         label: '附加内容',
         kind: _TabKind.extras,
@@ -520,28 +519,24 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               ),
             ),
           ),
-          // Tabs + panel listen via ValueNotifier — parent setState not used,
-          // so the pinned process image subtree is not rebuilt.
-          Positioned(
-            top: topPad + 52,
-            right: 12,
+          // Tap outside open panel → dismiss (do not treat as process-image gesture).
+          Positioned.fill(
             child: ValueListenableBuilder<int?>(
               valueListenable: _immersivePanelN,
               builder: (context, panel, _) {
                 return ValueListenableBuilder<bool>(
                   valueListenable: _panelOpenN,
                   builder: (context, open, _) {
-                    return _ImmersiveTabPills(
-                      selected: open ? panel : null,
-                      onSelect: (i) {
+                    if (panel == null || !open) {
+                      return const IgnorePointer(child: SizedBox.shrink());
+                    }
+                    return GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
                         HapticFeedback.selectionClick();
-                        if (panel == i && open) {
-                          _panelOpenN.value = false; // animate closed
-                        } else {
-                          _immersivePanelN.value = i;
-                          _panelOpenN.value = true;
-                        }
+                        _panelOpenN.value = false;
                       },
+                      child: const ColoredBox(color: Color(0x33000000)),
                     );
                   },
                 );
@@ -574,6 +569,33 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                       child: panel == 0
                           ? _buildDescPanel()
                           : _buildIngredientsPanel(),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          // Side pills stay above barrier + panel so they remain tappable.
+          Positioned(
+            top: topPad + 52,
+            right: 12,
+            child: ValueListenableBuilder<int?>(
+              valueListenable: _immersivePanelN,
+              builder: (context, panel, _) {
+                return ValueListenableBuilder<bool>(
+                  valueListenable: _panelOpenN,
+                  builder: (context, open, _) {
+                    return _ImmersiveTabPills(
+                      selected: open ? panel : null,
+                      onSelect: (i) {
+                        HapticFeedback.selectionClick();
+                        if (panel == i && open) {
+                          _panelOpenN.value = false; // animate closed
+                        } else {
+                          _immersivePanelN.value = i;
+                          _panelOpenN.value = true;
+                        }
+                      },
                     );
                   },
                 );
@@ -1639,13 +1661,51 @@ class _ExtrasFold extends StatelessWidget {
   }
 }
 
-String _extrasMarkdown(RecipeSection section) {
+/// Build extras markdown and strip HowToCook upstream contribution boilerplate.
+String extrasMarkdownOf(RecipeSection section) {
   final buf = StringBuffer();
   if (section.body.trim().isNotEmpty) {
     buf.writeln(section.body.trim());
   }
   for (final item in section.items) {
+    final itemText = item.trim();
+    if (_isHowtoCookContributionLine(itemText)) continue;
     buf.writeln('- $item');
   }
-  return buf.toString().trim();
+  return _stripHowtoCookContributionBoilerplate(buf.toString()).trim();
+}
+
+String _extrasMarkdown(RecipeSection section) => extrasMarkdownOf(section);
+
+bool _isHowtoCookContributionLine(String t) {
+  if (!t.contains('如果您遵循本指南')) return false;
+  return t.contains('Issue') ||
+      t.contains('Pull request') ||
+      t.contains('pull request') ||
+      t.contains('Pull Request') ||
+      t.contains('PR');
+}
+
+String _stripHowtoCookContributionBoilerplate(String text) {
+  final lines = text.split('\n');
+  final kept = <String>[];
+  for (final line in lines) {
+    final t = line.trim();
+    // Whole-line / bullet contribution CTA from upstream recipes.
+    if (_isHowtoCookContributionLine(t.replaceFirst(RegExp(r'^[-*+]\s+'), ''))) {
+      continue;
+    }
+    if (_isHowtoCookContributionLine(t)) continue;
+    kept.add(line);
+  }
+  var out = kept.join('\n');
+  // Paragraph form that may span one long line.
+  out = out.replaceAll(
+    RegExp(
+      r'如果您遵循本指南[^\n]*?(?:Issue|issue)[^\n]*?(?:Pull\s*[Rr]equest|pull\s*request|PR)[^\n]*',
+    ),
+    '',
+  );
+  out = out.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+  return out.trim();
 }

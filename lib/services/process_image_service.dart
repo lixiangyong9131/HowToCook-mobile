@@ -141,10 +141,16 @@ class ProcessImageService {
   }
 
   /// Tip process-card key: `tips/learn/学习焯水.md` → `tips/学习焯水`.
+  /// Keys whose bundled/remote card is known wrong for the tip prose.
+  static const _tipImageBlocklist = <String>{
+    'tips/厨房准备', // was 葱油拌面 card upstream
+  };
+
   String? tipKeyForPath(String tipPath) {
     final stem = p.basenameWithoutExtension(tipPath);
     if (stem.isEmpty) return null;
     final key = 'tips/$stem';
+    if (_tipImageBlocklist.contains(key)) return null;
     return _keys.contains(key) ? key : null;
   }
 
@@ -162,7 +168,8 @@ class ProcessImageService {
     if (stem.contains('用刀') || stem.contains('刀')) {
       return 'assets/icons/doodle/cutlery.png';
     }
-    if (stem.contains('洗碗')) {
+    // Upstream tips/厨房准备.jpeg was mislabeled 葱油拌面 — never bind that file.
+    if (stem.contains('洗碗') || stem.contains('厨房准备') || stem.contains('厨房')) {
       return 'assets/icons/doodle/kitchen.png';
     }
     if (stem.contains('压力') || stem.contains('高压')) {
