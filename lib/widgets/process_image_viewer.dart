@@ -147,7 +147,7 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: widget.immersive ? Colors.black : AppTheme.bg,
+      color: AppTheme.bg,
       child: FutureBuilder<ProcessImageBytes?>(
         future: _future,
         builder: (context, snap) {

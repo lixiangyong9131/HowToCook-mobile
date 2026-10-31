@@ -323,7 +323,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   ) {
     final topPad = MediaQuery.paddingOf(context).top;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppTheme.bg,
       body: Stack(
         fit: StackFit.expand,
         children: [

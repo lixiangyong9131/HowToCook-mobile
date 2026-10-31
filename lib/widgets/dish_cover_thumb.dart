@@ -31,7 +31,6 @@ class DishHeaderBackdrop extends StatelessWidget {
       image = Image.asset(
         path,
         fit: BoxFit.cover,
-        // Top of 9:16 card = dish photo; avoid shifting into step text.
         alignment: Alignment.topCenter,
         width: double.infinity,
         height: double.infinity,
@@ -57,7 +56,6 @@ class DishHeaderBackdrop extends StatelessWidget {
       children: [
         const ColoredBox(color: AppTheme.blackCard),
         if (image != null) image,
-        // Scrim so title/icons stay readable over the food photo.
         DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -79,8 +77,8 @@ class DishHeaderBackdrop extends StatelessWidget {
 }
 
 
-/// List/logo thumb: top-band crop like [DishHeaderBackdrop], then cut an
-/// extra ~300px off the bottom of that square band (food only, less card UI).
+/// List/logo thumb: top ~1/3 of the 9:16 process image (food band), not a
+/// bottom-trimmed square crop.
 class DishCoverThumb extends StatelessWidget {
   final Recipe recipe;
   final double size;
@@ -93,14 +91,12 @@ class DishCoverThumb extends StatelessWidget {
     this.borderRadius,
   });
 
-  /// Typical bundled process-image width (720×1289). Square cover shows the
-  /// top [srcWidth]×[srcWidth] band; we drop [cutBottomPx] from that band
-  /// (300 from v0.6.21 + another 500).
-  static const double srcWidth = 720;
-  static const double cutBottomPx = 800;
+  /// Full process image is laid out at [size] × [size]*[_topFractionInverse]
+  /// then clipped to a square — so only the top 1/[_topFractionInverse] shows.
+  static const double _topFractionInverse = 3;
 
   static const _ua = {
-    'User-Agent': 'HowToCook-mobile/0.6.22',
+    'User-Agent': 'HowToCook-mobile/0.6.23',
     'Accept': 'image/jpeg,image/*;q=0.8',
   };
 
@@ -109,10 +105,7 @@ class DishCoverThumb extends StatelessWidget {
     final path = ProcessImageService.instance.assetPathFor(recipe);
     final remote = ProcessImageService.instance.remoteUrlFor(recipe);
     final radius = borderRadius ?? BorderRadius.circular(14);
-    // Render taller than the clip so bottom of the square crop is discarded.
-    // Keep a minimum visible band so extreme cuts still show food, not empty.
-    final visibleBand = (srcWidth - cutBottomPx).clamp(160.0, srcWidth);
-    final tall = size * (srcWidth / visibleBand);
+    final tall = size * _topFractionInverse;
 
     Widget image;
     if (path != null) {
