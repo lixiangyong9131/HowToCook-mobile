@@ -35,7 +35,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   /// Isolated from setState so process image / header do not rebuild every tick.
   final ValueNotifier<Duration?> _remainingN = ValueNotifier<Duration?>(null);
   final ValueNotifier<Duration?> _totalN = ValueNotifier<Duration?>(null);
-  double _favScale = 1;
+  final ValueNotifier<double> _favScaleN = ValueNotifier<double>(1);
   bool _hasProcessImage = false;
   /// Immersive side tabs: null = image only, 0 = 文字描述, 1 = 必备原料.
   int? _immersivePanel;
@@ -180,6 +180,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   void dispose() {
     _timer?.cancel();
     _remainingN.dispose();
+    _favScaleN.dispose();
     _totalN.dispose();
     _tabs.dispose();
     super.dispose();
@@ -187,10 +188,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
 
   Future<void> _toggleFavorite() async {
     HapticFeedback.lightImpact();
-    setState(() => _favScale = 1.35);
+    _favScaleN.value = 1.35;
     await FavoritesScope.of(context).toggle(widget.recipe.id);
     await Future<void>.delayed(const Duration(milliseconds: 160));
-    if (mounted) setState(() => _favScale = 1);
+    if (mounted) _favScaleN.value = 1;
   }
 
   void _startTimer(Duration d, {int? stepIndex}) {
@@ -307,18 +308,18 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   Widget build(BuildContext context) {
     final recipe = widget.recipe;
     final color = categoryColors[recipe.categoryId] ?? AppTheme.neon;
-    final fav = FavoritesScope.of(context).isFavorite(recipe.id);
+    // FavoritesScope is read only in [_FavoriteActionButton] so toggling
+    // 喜欢 does not rebuild ProcessImageViewer (avoids immersive flicker).
 
     if (_hasProcessImage) {
-      return _buildImmersiveProcessDetail(recipe, color, fav);
+      return _buildImmersiveProcessDetail(recipe, color);
     }
-    return _buildClassicDetail(recipe, color, fav);
+    return _buildClassicDetail(recipe, color);
   }
 
   Widget _buildImmersiveProcessDetail(
     Recipe recipe,
     Color color,
-    bool fav,
   ) {
     final topPad = MediaQuery.paddingOf(context).top;
     return Scaffold(
@@ -326,13 +327,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Full-page process image — no prose on this view.
+          // Full-page process image — pinned so chrome setState / fav
+          // InheritedNotifier updates do not repaint this layer.
           Positioned.fill(
-            child: ProcessImageViewer(
-              key: ValueKey('process-immersive-${recipe.id}'),
-              immersive: true,
-              loader: () => ProcessImageService.instance.loadFor(recipe),
-              remoteUrl: ProcessImageService.instance.remoteUrlFor(recipe),
+            child: RepaintBoundary(
+              child: _PinnedProcessImage(
+                key: ValueKey('process-pinned-${recipe.id}'),
+                recipe: recipe,
+              ),
             ),
           ),
           // Light top scrim only — image fills the page (no letterbox bars).
@@ -382,18 +384,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                         icon: const Icon(Icons.smart_display_outlined,
                             color: Colors.white),
                       ),
-                      IconButton(
-                        tooltip: fav ? '取消收藏' : '收藏',
-                        onPressed: _toggleFavorite,
-                        icon: AnimatedScale(
-                          scale: _favScale,
-                          duration: const Duration(milliseconds: 180),
-                          curve: Curves.easeOutBack,
-                          child: Icon(
-                            fav ? Icons.favorite : Icons.favorite_border,
-                            color: fav ? AppTheme.coral : Colors.white,
-                          ),
-                        ),
+                      _FavoriteActionButton(
+                        recipeId: recipe.id,
+                        scaleListenable: _favScaleN,
+                        onToggle: _toggleFavorite,
+                        lightChrome: true,
                       ),
                       IconButton(
                         tooltip: '计时',
@@ -645,7 +640,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     );
   }
 
-  Widget _buildClassicDetail(Recipe recipe, Color color, bool fav) {
+  Widget _buildClassicDetail(Recipe recipe, Color color) {
     return Scaffold(
       backgroundColor: AppTheme.bg,
       body: Stack(
@@ -665,18 +660,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                       onPressed: _openVideo,
                       icon: const Icon(Icons.smart_display_outlined),
                     ),
-                    IconButton(
-                      tooltip: fav ? '取消收藏' : '收藏',
-                      onPressed: _toggleFavorite,
-                      icon: AnimatedScale(
-                        scale: _favScale,
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOutBack,
-                        child: Icon(
-                          fav ? Icons.favorite : Icons.favorite_border,
-                          color: fav ? AppTheme.coral : Colors.white,
-                        ),
-                      ),
+                    _FavoriteActionButton(
+                      recipeId: recipe.id,
+                      scaleListenable: _favScaleN,
+                      onToggle: _toggleFavorite,
+                      lightChrome: true,
                     ),
                     IconButton(
                       tooltip: '计时',
@@ -1247,6 +1235,75 @@ class _ImmersiveContentPanel extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+
+/// Owns [FavoritesScope] subscription so parent detail does not rebuild
+/// (and flicker) the process-image layer when 喜欢 is toggled.
+class _FavoriteActionButton extends StatelessWidget {
+  final String recipeId;
+  final ValueNotifier<double> scaleListenable;
+  final Future<void> Function() onToggle;
+  final bool lightChrome;
+
+  const _FavoriteActionButton({
+    required this.recipeId,
+    required this.scaleListenable,
+    required this.onToggle,
+    this.lightChrome = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fav = FavoritesScope.of(context).isFavorite(recipeId);
+    final idleColor = lightChrome ? Colors.white : AppTheme.ink;
+    return ValueListenableBuilder<double>(
+      valueListenable: scaleListenable,
+      builder: (context, scale, _) {
+        return IconButton(
+          tooltip: fav ? '取消收藏' : '收藏',
+          onPressed: onToggle,
+          icon: AnimatedScale(
+            scale: scale,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutBack,
+            child: Icon(
+              fav ? Icons.favorite : Icons.favorite_border,
+              color: fav ? AppTheme.coral : idleColor,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Keeps [ProcessImageViewer] state stable across parent chrome rebuilds.
+class _PinnedProcessImage extends StatefulWidget {
+  final Recipe recipe;
+
+  const _PinnedProcessImage({super.key, required this.recipe});
+
+  @override
+  State<_PinnedProcessImage> createState() => _PinnedProcessImageState();
+}
+
+class _PinnedProcessImageState extends State<_PinnedProcessImage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final recipe = widget.recipe;
+    return ProcessImageViewer(
+      key: ValueKey('process-immersive-${recipe.id}'),
+      immersive: true,
+      loader: () => ProcessImageService.instance.loadFor(recipe),
+      remoteUrl: ProcessImageService.instance.remoteUrlFor(recipe),
     );
   }
 }
