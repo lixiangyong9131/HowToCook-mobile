@@ -5,10 +5,10 @@ import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
 
-/// Interaction 5 — inertia wheel hour:minute picker (cream/coral capsule).
+/// Interaction 5 — inertia wheel hour:minute:second picker (cream/coral capsule).
 Future<Duration?> showInertiaTimerPicker(
   BuildContext context, {
-  Duration initial = const Duration(minutes: 5),
+  Duration initial = const Duration(seconds: 30),
 }) {
   return showModalBottomSheet<Duration>(
     context: context,
@@ -29,30 +29,35 @@ class InertiaTimerSheet extends StatefulWidget {
 class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
   late int _hour;
   late int _min;
+  late int _sec;
   late FixedExtentScrollController _hourCtrl;
   late FixedExtentScrollController _minCtrl;
+  late FixedExtentScrollController _secCtrl;
 
   @override
   void initState() {
     super.initState();
-    final totalMin = widget.initial.inMinutes.clamp(0, 12 * 60);
-    _hour = totalMin ~/ 60;
-    _min = totalMin % 60;
+    final totalSec = widget.initial.inSeconds.clamp(0, 12 * 3600);
+    _hour = totalSec ~/ 3600;
+    _min = (totalSec % 3600) ~/ 60;
+    _sec = totalSec % 60;
     _hourCtrl = FixedExtentScrollController(initialItem: _hour);
     _minCtrl = FixedExtentScrollController(initialItem: _min);
+    _secCtrl = FixedExtentScrollController(initialItem: _sec);
   }
 
   @override
   void dispose() {
     _hourCtrl.dispose();
     _minCtrl.dispose();
+    _secCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final label =
-        '${_hour.toString().padLeft(2, '0')}:${_min.toString().padLeft(2, '0')}';
+        '${_hour.toString().padLeft(2, '0')}:${_min.toString().padLeft(2, '0')}:${_sec.toString().padLeft(2, '0')}';
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 24),
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
@@ -74,7 +79,7 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
                 ),
                 const Spacer(),
                 Text(
-                  'HOUR : MINUTE',
+                  'HOUR : MIN : SEC',
                   style: TextStyle(
                     fontSize: 11,
                     letterSpacing: 1.4,
@@ -164,6 +169,25 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
                           },
                         ),
                       ),
+                      const Text(
+                        ':',
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          color: AppTheme.navy,
+                        ),
+                      ),
+                      Expanded(
+                        child: _InertiaWheel(
+                          controller: _secCtrl,
+                          itemCount: 60,
+                          labelBuilder: (i) => i.toString().padLeft(2, '0'),
+                          onSelected: (i) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _sec = i);
+                          },
+                        ),
+                      ),
                     ],
                   ),
                   IgnorePointer(
@@ -210,15 +234,27 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
             ),
             const SizedBox(height: 8),
             const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('时',
-                    style: TextStyle(
-                        color: AppTheme.muted, fontWeight: FontWeight.w600)),
-                SizedBox(width: 80),
-                Text('分',
-                    style: TextStyle(
-                        color: AppTheme.muted, fontWeight: FontWeight.w600)),
+                Expanded(
+                  child: Text('时',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: AppTheme.muted, fontWeight: FontWeight.w600)),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text('分',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: AppTheme.muted, fontWeight: FontWeight.w600)),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text('秒',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: AppTheme.muted, fontWeight: FontWeight.w600)),
+                ),
               ],
             ),
             const SizedBox(height: 18),
@@ -234,7 +270,7 @@ class _InertiaTimerSheetState extends State<InertiaTimerSheet> {
                   ),
                 ),
                 onPressed: () {
-                  final d = Duration(hours: _hour, minutes: _min);
+                  final d = Duration(hours: _hour, minutes: _min, seconds: _sec);
                   if (d.inSeconds <= 0) return;
                   Navigator.of(context).pop(d);
                 },

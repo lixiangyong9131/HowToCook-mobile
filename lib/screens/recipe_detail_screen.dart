@@ -281,7 +281,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   Future<void> _openTimerPicker([Duration? hint, int? stepIndex]) async {
     final d = await showInertiaTimerPicker(
       context,
-      initial: hint ?? const Duration(minutes: 5),
+      initial: hint ?? const Duration(seconds: 30),
     );
     if (d != null) _startTimer(d, stepIndex: stepIndex);
   }

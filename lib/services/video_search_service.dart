@@ -37,6 +37,7 @@ class BiliVideo {
     return '$play';
   }
 
+  /// Parses official search API result items (`pic` / `play` / `bvid` / …).
   factory BiliVideo.fromJson(Map<String, dynamic> json) {
     final title = (json['title'] as String? ?? '')
         .replaceAll(RegExp(r'</?em[^>]*>'), '')
@@ -46,8 +47,8 @@ class BiliVideo {
       title: title,
       author: json['author'] as String? ?? '',
       duration: '${json['duration'] ?? ''}',
-      cover: json['cover'] as String? ??
-          json['pic'] as String? ??
+      cover: json['pic'] as String? ??
+          json['cover'] as String? ??
           '',
       play: _asInt(json['play'] ?? json['play_count'] ?? json['video_review']),
     );
@@ -64,7 +65,8 @@ class BiliVideo {
 class VideoSearchResult {
   final List<BiliVideo> results;
   final String keyword;
-  final String source; // ryanuo | bilibili | fallback
+  /// bilibili | fallback
+  final String source;
   final String searchUrl;
 
   const VideoSearchResult({
@@ -75,11 +77,10 @@ class VideoSearchResult {
   });
 }
 
-/// Prefer eat.ryanuo.cc backend (same as https://eat.ryanuo.cc/),
-/// then official Bilibili search API; last resort is search URL intent only.
+/// Searches Bilibili via the official web search API
+/// (`/x/web-interface/search/type`). On failure, returns an empty list with
+/// [searchUrl] pointing at search.bilibili.com for the in-app browser.
 class VideoSearchService {
-  static const _ryanuo =
-      'https://eat.ryanuo.cc/api/video-search';
   static const _bili =
       'https://api.bilibili.com/x/web-interface/search/type';
 
@@ -96,31 +97,6 @@ class VideoSearchService {
         source: 'fallback',
         searchUrl: searchUrl,
       );
-    }
-
-    try {
-      final uri = Uri.parse(_ryanuo).replace(queryParameters: {'name': keyword});
-      final res = await http
-          .get(uri, headers: {'User-Agent': 'HowToCook-mobile/0.5'})
-          .timeout(const Duration(seconds: 8));
-      if (res.statusCode == 200) {
-        final map = jsonDecode(res.body) as Map<String, dynamic>;
-        final list = (map['results'] as List<dynamic>? ?? [])
-            .whereType<Map<String, dynamic>>()
-            .map(BiliVideo.fromJson)
-            .where((v) => v.bvid.isNotEmpty)
-            .toList();
-        if (list.isNotEmpty) {
-          return VideoSearchResult(
-            results: list,
-            keyword: keyword,
-            source: 'ryanuo',
-            searchUrl: searchUrl,
-          );
-        }
-      }
-    } catch (_) {
-      // fall through
     }
 
     try {
@@ -153,7 +129,7 @@ class VideoSearchService {
         }
       }
     } catch (_) {
-      // fall through
+      // fall through to search-page URL
     }
 
     return VideoSearchResult(
