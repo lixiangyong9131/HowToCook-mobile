@@ -72,16 +72,35 @@ class _AboutScreenState extends State<AboutScreen> {
         );
         return;
       }
+      final cached = _cachedApk != null &&
+          (_cachedApk!.tag == latest.tag ||
+              _cachedApk!.url == (latest.apkUrl ?? ''));
       final go = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text('发现新版本 ${latest.tag}'),
-          content: SingleChildScrollView(
-            child: Text(
-              latest.body.trim().isEmpty
-                  ? '有新版本可用，是否下载并安装？'
-                  : latest.body,
-            ),
+          title: const Text('发现新版本'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '版本 ${latest.tag}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '大小 ${latest.apkSizeLabel}',
+                style: const TextStyle(color: AppTheme.muted),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '当前 $_version',
+                style: const TextStyle(color: AppTheme.muted, fontSize: 13),
+              ),
+            ],
           ),
           actions: [
             TextButton(
@@ -96,13 +115,7 @@ class _AboutScreenState extends State<AboutScreen> {
               onPressed: latest.apkUrl == null
                   ? null
                   : () => Navigator.pop(ctx, true),
-              child: Text(
-                _cachedApk != null &&
-                        (_cachedApk!.tag == latest.tag ||
-                            _cachedApk!.url == (latest.apkUrl ?? ''))
-                    ? '继续安装'
-                    : '下载并安装',
-              ),
+              child: Text(cached ? '继续安装' : '下载并安装'),
             ),
           ],
         ),
@@ -239,8 +252,8 @@ class _AboutScreenState extends State<AboutScreen> {
               subtitle: _downloadProgress != null
                   ? '下载中 ${(_downloadProgress! * 100).toStringAsFixed(0)}%'
                   : (_cachedApk != null
-                      ? '已缓存 ${_cachedApk!.tag.isEmpty ? "安装包" : _cachedApk!.tag}，失败可继续安装'
-                      : '从 GitHub Release 拉取新 APK'),
+                      ? '已缓存 ${_cachedApk!.tag.isEmpty ? "安装包" : _cachedApk!.tag}'
+                      : '检查 GitHub 新版本'),
               color: AppTheme.neon,
               onTap: _checking ? null : _checkUpdate,
               trailing: _downloadProgress != null

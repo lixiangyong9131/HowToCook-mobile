@@ -17,6 +17,8 @@ class UpdateInfo {
   final String body;
   final String? apkUrl;
   final String htmlUrl;
+  /// APK asset size from GitHub Releases, when known.
+  final int? apkSizeBytes;
 
   const UpdateInfo({
     required this.tag,
@@ -24,7 +26,20 @@ class UpdateInfo {
     required this.body,
     required this.apkUrl,
     required this.htmlUrl,
+    this.apkSizeBytes,
   });
+
+  String get apkSizeLabel {
+    final n = apkSizeBytes;
+    if (n == null || n <= 0) return '大小未知';
+    if (n >= 1024 * 1024) {
+      return '${(n / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    if (n >= 1024) {
+      return '${(n / 1024).toStringAsFixed(0)} KB';
+    }
+    return '$n B';
+  }
 }
 
 /// Persisted download metadata so install can retry without re-downloading.
@@ -102,12 +117,19 @@ class UpdateService {
     final body = (json['body'] as String?) ?? '';
     final htmlUrl = (json['html_url'] as String?) ?? '';
     String? apkUrl;
+    int? apkSizeBytes;
     final assets = json['assets'] as List<dynamic>? ?? const [];
     for (final a in assets) {
       final m = a as Map<String, dynamic>;
       final name = (m['name'] as String? ?? '').toLowerCase();
       if (name.endsWith('.apk')) {
         apkUrl = m['browser_download_url'] as String?;
+        final sz = m['size'];
+        if (sz is int) {
+          apkSizeBytes = sz;
+        } else if (sz is num) {
+          apkSizeBytes = sz.toInt();
+        }
         break;
       }
     }
@@ -122,6 +144,7 @@ class UpdateService {
       body: body,
       apkUrl: apkUrl,
       htmlUrl: htmlUrl,
+      apkSizeBytes: apkSizeBytes,
     );
   }
 
