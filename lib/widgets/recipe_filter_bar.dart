@@ -10,6 +10,7 @@ class RecipeFilterBar extends StatelessWidget {
   final TimeFilter time;
   final CalorieFilter calories;
   final RecipeSort sort;
+  final RecipeSort defaultSort;
   final ValueChanged<DifficultyFilter> onDifficulty;
   final ValueChanged<TimeFilter> onTime;
   final ValueChanged<CalorieFilter> onCalories;
@@ -22,6 +23,7 @@ class RecipeFilterBar extends StatelessWidget {
     required this.time,
     required this.calories,
     required this.sort,
+    this.defaultSort = RecipeSort.name,
     required this.onDifficulty,
     required this.onTime,
     required this.onCalories,
@@ -33,7 +35,17 @@ class RecipeFilterBar extends StatelessWidget {
       difficulty != DifficultyFilter.all ||
       time != TimeFilter.all ||
       calories != CalorieFilter.all ||
-      sort != RecipeSort.name;
+      sort != defaultSort;
+
+  List<(RecipeSort, String)> get _sortOptions => [
+        if (defaultSort == RecipeSort.relevance)
+          (RecipeSort.relevance, '按相关度'),
+        (RecipeSort.name, '按名称'),
+        (RecipeSort.difficultyAsc, '难度从低到高'),
+        (RecipeSort.difficultyDesc, '难度从高到低'),
+        (RecipeSort.timeAsc, '时间从短到长'),
+        (RecipeSort.caloriesAsc, '热量从低到高'),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +77,7 @@ class RecipeFilterBar extends StatelessWidget {
               const SizedBox(width: 8),
               _chip(
                 label: _sortLabel(sort),
-                active: sort != RecipeSort.name,
+                active: sort != defaultSort,
                 onTap: () => _pickSort(context),
                 icon: Icons.sort_rounded,
               ),
@@ -79,7 +91,7 @@ class RecipeFilterBar extends StatelessWidget {
                     onDifficulty(DifficultyFilter.all);
                     onTime(TimeFilter.all);
                     onCalories(CalorieFilter.all);
-                    onSort(RecipeSort.name);
+                    onSort(defaultSort);
                   },
                   icon: Icons.refresh_rounded,
                 ),
@@ -207,13 +219,7 @@ class RecipeFilterBar extends StatelessWidget {
     final v = await _sheet<RecipeSort>(
       context,
       title: '排序',
-      options: const [
-        (RecipeSort.name, '按名称'),
-        (RecipeSort.difficultyAsc, '难度从低到高'),
-        (RecipeSort.difficultyDesc, '难度从高到低'),
-        (RecipeSort.timeAsc, '时间从短到长'),
-        (RecipeSort.caloriesAsc, '热量从低到高'),
-      ],
+      options: _sortOptions,
       current: sort,
     );
     if (v != null) onSort(v);
@@ -309,11 +315,15 @@ class RecipeFilterBar extends StatelessWidget {
         CalorieFilter.unknown => '无热量',
       };
 
-  static String _sortLabel(RecipeSort s) => switch (s) {
-        RecipeSort.name => '排序',
-        RecipeSort.difficultyAsc => '难度↑',
-        RecipeSort.difficultyDesc => '难度↓',
-        RecipeSort.timeAsc => '时间↑',
-        RecipeSort.caloriesAsc => '热量↑',
-      };
+  String _sortLabel(RecipeSort s) {
+    if (s == defaultSort) return '排序';
+    return switch (s) {
+      RecipeSort.relevance => '相关',
+      RecipeSort.name => '名称',
+      RecipeSort.difficultyAsc => '难度↑',
+      RecipeSort.difficultyDesc => '难度↓',
+      RecipeSort.timeAsc => '时间↑',
+      RecipeSort.caloriesAsc => '热量↑',
+    };
+  }
 }

@@ -7,10 +7,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/recipe_repository.dart';
 import '../services/update_service.dart';
-import '../services/ringtone_settings.dart';
 import '../theme/app_theme.dart';
-import '../widgets/ringtone_picker_sheet.dart';
-import 'categories_screen.dart';
+import 'settings_screen.dart';
 
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
@@ -24,7 +22,6 @@ class _AboutScreenState extends State<AboutScreen> {
   bool _checking = false;
   double? _downloadProgress;
   CachedApk? _cachedApk;
-  String _ringtoneLabel = '…';
 
   @override
   void initState() {
@@ -33,11 +30,6 @@ class _AboutScreenState extends State<AboutScreen> {
       if (mounted) setState(() => _version = '${i.version}+${i.buildNumber}');
     });
     _refreshCachedApk();
-    RingtoneSettings.instance.load().then((_) {
-      if (mounted) {
-        setState(() => _ringtoneLabel = RingtoneSettings.instance.selected.label);
-      }
-    });
   }
 
   Future<void> _refreshCachedApk() async {
@@ -244,27 +236,14 @@ class _AboutScreenState extends State<AboutScreen> {
             ),
             const SizedBox(height: 14),
             _ActionTile(
-              icon: Icons.grid_view_rounded,
-              title: '分类浏览',
-              subtitle: '叠卡展开动效入口',
-              color: AppTheme.coral,
+              icon: Icons.settings_rounded,
+              title: '设置',
+              subtitle: '计时结束铃声',
+              color: const Color(0xFFFFB4A2),
               onTap: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const CategoriesScreen()),
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
                 );
-              },
-            ),
-            const SizedBox(height: 10),
-            _ActionTile(
-              icon: Icons.notifications_active_rounded,
-              title: '计时结束铃声',
-              subtitle: '当前：$_ringtoneLabel · 点此选择与试听',
-              color: const Color(0xFFFFB4A2),
-              onTap: () async {
-                await showRingtonePickerSheet(context);
-                if (!mounted) return;
-                setState(() =>
-                    _ringtoneLabel = RingtoneSettings.instance.selected.label);
               },
             ),
             const SizedBox(height: 10),

@@ -23,7 +23,7 @@ class _SearchScreenState extends State<SearchScreen> {
   DifficultyFilter _difficulty = DifficultyFilter.all;
   TimeFilter _time = TimeFilter.all;
   CalorieFilter _calories = CalorieFilter.all;
-  RecipeSort _sort = RecipeSort.name;
+  RecipeSort _sort = RecipeSort.relevance;
 
   @override
   void initState() {
@@ -110,6 +110,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     time: _time,
                     calories: _calories,
                     sort: _sort,
+                    defaultSort: RecipeSort.relevance,
                     resultCount: results.length,
                     onDifficulty: (v) => setState(() => _difficulty = v),
                     onTime: (v) => setState(() => _time = v),
