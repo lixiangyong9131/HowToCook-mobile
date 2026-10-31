@@ -71,17 +71,21 @@ class RecipeRepository {
   ///
   /// - 「番茄」↔「西红柿」via [FoodSynonyms].
   /// - 「土豆牛肉」/「土豆 牛肉」→ ingredients (or title) must match BOTH tokens.
-  /// - Title matches count; ingredient section preferred for AND raw queries.
+  /// - Rank bands, best first: exact title, title prefix, title contains the
+  ///   query, other title hits (synonyms), then ingredient-only.
+  ///   Within a band, higher title overlap ranks first.
   List<Recipe> search(String query) {
     final db = _db;
-    if (db == null || query.trim().isEmpty) return const [];
+    final qRaw = query.trim();
+    if (db == null || qRaw.isEmpty) return const [];
 
-    final tokens = FoodSynonyms.tokensFor(query);
+    final tokens = FoodSynonyms.tokensFor(qRaw);
     if (tokens.isEmpty) return const [];
+    final q = qRaw.toLowerCase();
 
     final scored = <({Recipe r, int score})>[];
     for (final r in db.recipes) {
-      final title = r.title;
+      final title = r.title.toLowerCase();
       final ing = _ingredientBlob(r.markdown);
       final cat = r.categoryName;
       final body = r.markdown;
@@ -91,30 +95,97 @@ class RecipeRepository {
       // 「番茄」still finds mentions outside the 原料 list.
       final useBodyFallback = tokens.length == 1;
       var allHit = true;
-      var titleHits = 0;
+      var titleTokenHits = 0;
+      var titleRankSum = 0;
+      var matchedChars = 0;
       var ingHits = 0;
       for (final g in tokens) {
-        final inTitle = FoodSynonyms.groupMatches(g, title);
+        final hit = _bestTitleHit(title, g);
         final inIng = FoodSynonyms.groupMatches(g, ing);
         final inCat = FoodSynonyms.groupMatches(g, cat);
-        final inBody =
-            useBodyFallback && FoodSynonyms.groupMatches(g, body);
-        if (!(inTitle || inIng || inCat || inBody)) {
+        final inBody = useBodyFallback && FoodSynonyms.groupMatches(g, body);
+        if (hit.rank == 0 && !inIng && !inCat && !inBody) {
           allHit = false;
           break;
         }
-        if (inTitle) titleHits++;
+        if (hit.rank > 0) {
+          titleTokenHits++;
+          titleRankSum += hit.rank;
+          matchedChars += hit.length;
+        }
         if (inIng) ingHits++;
       }
       if (!allHit) continue;
 
-      // Rank: all tokens in title > mix > ingredients-only.
-      final score = titleHits * 100 + ingHits * 10 + (useBodyFallback ? 1 : 0);
+      final phrase = _phraseRank(title, q);
+      // 0 exact title … 5 no title hit (ingredients / body / category only).
+      final int tier;
+      if (phrase == 3) {
+        tier = 0;
+      } else if (phrase == 2) {
+        tier = 1;
+      } else if (phrase == 1) {
+        tier = 2;
+      } else if (titleTokenHits == tokens.length) {
+        tier = 3;
+      } else if (titleTokenHits > 0) {
+        tier = 4;
+      } else {
+        tier = 5;
+      }
+
+      final overlap = phrase > 0 ? q.length : matchedChars;
+      final coverage = title.isEmpty
+          ? 0
+          : (overlap * 100 ~/ title.length).clamp(0, 100).toInt();
+      final within = titleRankSum * 10000 +
+          coverage * 100 +
+          matchedChars.clamp(0, 80).toInt() +
+          ingHits;
+      // Tier always dominates the within-band score.
+      final score = (5 - tier) * 1000000 + within;
       scored.add((r: r, score: score));
     }
 
-    scored.sort((a, b) => b.score.compareTo(a.score));
+    scored.sort((a, b) {
+      final c = b.score.compareTo(a.score);
+      if (c != 0) return c;
+      return a.r.title.compareTo(b.r.title);
+    });
     return scored.map((e) => e.r).toList();
+  }
+
+  /// 3 exact title, 2 prefix, 1 substring, 0 miss. Longer synonym wins ties.
+  static ({int rank, int length}) _bestTitleHit(
+    String titleLower,
+    Set<String> group,
+  ) {
+    var rank = 0;
+    var length = 0;
+    for (final term in group) {
+      if (term.isEmpty) continue;
+      final r = titleLower == term
+          ? 3
+          : titleLower.startsWith(term)
+              ? 2
+              : titleLower.contains(term)
+                  ? 1
+                  : 0;
+      if (r > rank || (r == rank && r > 0 && term.length > length)) {
+        rank = r;
+        length = term.length;
+      }
+    }
+    return (rank: rank, length: length);
+  }
+
+  /// How the raw query sits in the title: 3 exact, 2 prefix, 1 contains, 0 no.
+  static int _phraseRank(String titleLower, String queryLower) {
+    if (queryLower.isEmpty) return 0;
+    if (titleLower == queryLower) return 3;
+    if (titleLower.startsWith(queryLower)) return 2;
+    if (titleLower.contains(queryLower)) return 1;
+    return 0;
   }
 
   /// Pull 原料 / 用料 section list text for ingredient-oriented matching.

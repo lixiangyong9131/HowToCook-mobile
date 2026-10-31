@@ -37,7 +37,15 @@ enum TimeFilter { all, le15, le30, le60, over60, unknown }
 
 enum CalorieFilter { all, le300, le600, le1000, over1000, unknown }
 
-enum RecipeSort { name, difficultyAsc, difficultyDesc, timeAsc, caloriesAsc }
+enum RecipeSort {
+  /// Keep the incoming order (search relevance).
+  relevance,
+  name,
+  difficultyAsc,
+  difficultyDesc,
+  timeAsc,
+  caloriesAsc,
+}
 
 bool recipeMatchesFilters(
   Recipe recipe, {
@@ -107,6 +115,8 @@ List<Recipe> applyRecipeFilters(
       )
       .toList();
   switch (sort) {
+    case RecipeSort.relevance:
+      break;
     case RecipeSort.name:
       out.sort((a, b) => a.title.compareTo(b.title));
     case RecipeSort.difficultyAsc:
