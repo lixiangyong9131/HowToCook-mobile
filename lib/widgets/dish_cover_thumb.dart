@@ -79,7 +79,8 @@ class DishHeaderBackdrop extends StatelessWidget {
 }
 
 
-/// List/logo thumb: same top-band crop as [DishHeaderBackdrop].
+/// List/logo thumb: top-band crop like [DishHeaderBackdrop], then cut an
+/// extra ~300px off the bottom of that square band (food only, less card UI).
 class DishCoverThumb extends StatelessWidget {
   final Recipe recipe;
   final double size;
@@ -92,8 +93,13 @@ class DishCoverThumb extends StatelessWidget {
     this.borderRadius,
   });
 
+  /// Typical bundled process-image width (720×1289). Square cover shows the
+  /// top [srcWidth]×[srcWidth] band; we drop [cutBottomPx] from that band.
+  static const double srcWidth = 720;
+  static const double cutBottomPx = 300;
+
   static const _ua = {
-    'User-Agent': 'HowToCook-mobile/0.6.20',
+    'User-Agent': 'HowToCook-mobile/0.6.21',
     'Accept': 'image/jpeg,image/*;q=0.8',
   };
 
@@ -102,37 +108,47 @@ class DishCoverThumb extends StatelessWidget {
     final path = ProcessImageService.instance.assetPathFor(recipe);
     final remote = ProcessImageService.instance.remoteUrlFor(recipe);
     final radius = borderRadius ?? BorderRadius.circular(14);
+    // Render taller than the clip so bottom of the square crop is discarded.
+    final visibleBand = srcWidth - cutBottomPx; // 420
+    final tall = size * (srcWidth / visibleBand); // ~1.714 × size
 
-    Widget child;
+    Widget image;
     if (path != null) {
-      child = Image.asset(
+      image = Image.asset(
         path,
         fit: BoxFit.cover,
         alignment: Alignment.topCenter,
         width: size,
-        height: size,
+        height: tall,
         filterQuality: FilterQuality.medium,
         gaplessPlayback: true,
         errorBuilder: (_, __, ___) => _fallback(),
       );
     } else if (remote != null && remote.isNotEmpty) {
-      child = Image.network(
+      image = Image.network(
         remote,
         fit: BoxFit.cover,
         alignment: Alignment.topCenter,
         width: size,
-        height: size,
+        height: tall,
         filterQuality: FilterQuality.medium,
         headers: _ua,
         errorBuilder: (_, __, ___) => _fallback(),
       );
     } else {
-      child = _fallback();
+      image = _fallback();
     }
 
     return ClipRRect(
       borderRadius: radius,
-      child: SizedBox(width: size, height: size, child: child),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: SizedBox(width: size, height: tall, child: image),
+        ),
+      ),
     );
   }
 

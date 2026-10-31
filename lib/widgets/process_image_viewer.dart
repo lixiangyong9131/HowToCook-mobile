@@ -172,12 +172,15 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
             return _placeholder();
           }
 
+          final fit =
+              widget.immersive ? BoxFit.cover : BoxFit.contain;
           final Widget img;
           if (data.assetBytes != null) {
             img = Image.memory(
               Uint8List.fromList(data.assetBytes!),
-              fit: BoxFit.contain,
+              fit: fit,
               width: double.infinity,
+              height: widget.immersive ? double.infinity : null,
               filterQuality: FilterQuality.high,
               gaplessPlayback: true,
               errorBuilder: (_, __, ___) =>
@@ -186,8 +189,9 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
           } else {
             img = Image.file(
               data.file!,
-              fit: BoxFit.contain,
+              fit: fit,
               width: double.infinity,
+              height: widget.immersive ? double.infinity : null,
               filterQuality: FilterQuality.high,
               errorBuilder: (_, __, ___) =>
                   const Center(child: Text('图片损坏，请重试')),
@@ -226,8 +230,9 @@ class _NetworkProcessImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final net = Image.network(
       url,
-      fit: BoxFit.contain,
+      fit: immersive ? BoxFit.cover : BoxFit.contain,
       width: double.infinity,
+      height: immersive ? double.infinity : null,
       filterQuality: FilterQuality.high,
       headers: const {
         'User-Agent': 'HowToCook-mobile/0.6.17',
@@ -373,9 +378,13 @@ class _ZoomableImageState extends State<_ZoomableImage> {
                 },
                 child: InteractiveViewer(
                   transformationController: widget.transform,
-                  minScale: 0.8,
+                  minScale: widget.immersive ? 1.0 : 0.8,
                   maxScale: 4,
-                  boundaryMargin: const EdgeInsets.fromLTRB(0, 24, 0, 48),
+                  panEnabled: true,
+                  scaleEnabled: true,
+                  boundaryMargin: widget.immersive
+                      ? const EdgeInsets.all(48)
+                      : const EdgeInsets.fromLTRB(0, 24, 0, 48),
                   onInteractionEnd: (details) {
                     if (!_isNearIdentity(widget.transform.value)) return;
                     final v = details.velocity.pixelsPerSecond;
@@ -386,12 +395,12 @@ class _ZoomableImageState extends State<_ZoomableImage> {
                   child: SizedBox(
                     width: constraints.maxWidth,
                     height: constraints.maxHeight,
-                    child: Padding(
-                      padding: widget.immersive
-                          ? EdgeInsets.zero
-                          : const EdgeInsets.fromLTRB(8, 4, 8, 20),
-                      child: Center(child: widget.child),
-                    ),
+                    child: widget.immersive
+                        ? widget.child
+                        : Padding(
+                            padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
+                            child: Center(child: widget.child),
+                          ),
                   ),
                 ),
               );

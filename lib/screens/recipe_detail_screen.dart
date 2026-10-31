@@ -264,14 +264,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     return '${d.inMinutes} 分钟';
   }
 
-  List<Widget> _metaChips({required bool onDark}) {
-    final chips = <Widget>[];
+  Widget? _metaBlock({required bool onDark, bool vertical = false}) {
     final fg = onDark
         ? Colors.white.withValues(alpha: 0.9)
         : AppTheme.ink.withValues(alpha: 0.85);
     final bg = onDark
         ? Colors.black.withValues(alpha: 0.35)
         : Colors.white.withValues(alpha: 0.7);
+    final chips = <Widget>[];
     if (_parsed.calories != null) {
       chips.add(_MetaChip(
         icon: Icons.local_fire_department_outlined,
@@ -288,7 +288,19 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
         bg: bg,
       ));
     }
-    return chips;
+    if (chips.isEmpty) return null;
+    if (vertical) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < chips.length; i++) ...[
+            if (i > 0) const SizedBox(height: 6),
+            chips[i],
+          ],
+        ],
+      );
+    }
+    return Wrap(spacing: 8, runSpacing: 6, children: chips);
   }
 
   @override
@@ -323,12 +335,12 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               remoteUrl: ProcessImageService.instance.remoteUrlFor(recipe),
             ),
           ),
-          // Top scrim for readable chrome.
+          // Light top scrim only — image fills the page (no letterbox bars).
           Positioned(
             top: 0,
             left: 0,
             right: 0,
-            height: topPad + 168,
+            height: topPad + 120,
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -336,8 +348,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.black.withValues(alpha: 0.62),
-                      Colors.black.withValues(alpha: 0.28),
+                      Colors.black.withValues(alpha: 0.45),
+                      Colors.black.withValues(alpha: 0.18),
                       Colors.transparent,
                     ],
                   ),
@@ -392,14 +404,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                     ],
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 120, 0),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 118, 8),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
-                            vertical: 4,
+                            vertical: 3,
                           ),
                           decoration: BoxDecoration(
                             color: color,
@@ -410,7 +422,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                             children: [
                               DoodleIcons.categoryIcon(
                                 recipe.categoryId,
-                                size: 18,
+                                size: 16,
                               ),
                               const SizedBox(width: 6),
                               Text(
@@ -420,42 +432,53 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                                       ? Colors.white
                                       : AppTheme.ink,
                                   fontWeight: FontWeight.w800,
-                                  fontSize: 12,
+                                  fontSize: 11,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 6),
                         Text(
                           _parsed.title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 24,
+                            fontSize: 22,
                             fontWeight: FontWeight.w900,
-                            letterSpacing: -0.5,
-                            height: 1.15,
+                            letterSpacing: -0.4,
+                            height: 1.12,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black54,
+                                blurRadius: 8,
+                                offset: Offset(0, 1),
+                              ),
+                            ],
                           ),
                         ),
                         if (_parsed.difficulty != null) ...[
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 6),
                           Text(
                             '难度 ${'★' * _parsed.difficulty!}${'☆' * (5 - _parsed.difficulty!)}',
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.88),
+                              color: Colors.white.withValues(alpha: 0.9),
                               fontWeight: FontWeight.w600,
+                              shadows: const [
+                                Shadow(
+                                  color: Colors.black45,
+                                  blurRadius: 6,
+                                  offset: Offset(0, 1),
+                                ),
+                              ],
                             ),
                           ),
                         ],
-                        if (_metaChips(onDark: true).isNotEmpty) ...[
+                        if (_metaBlock(onDark: true, vertical: true)
+                            case final meta?) ...[
                           const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 6,
-                            children: _metaChips(onDark: true),
-                          ),
+                          meta,
                         ],
                       ],
                     ),
@@ -726,13 +749,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                                     ),
                                   ),
                                 ],
-                                if (_metaChips(onDark: true).isNotEmpty) ...[
+                                if (_metaBlock(onDark: true, vertical: true)
+                                    case final meta?) ...[
                                   const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 6,
-                                    children: _metaChips(onDark: true),
-                                  ),
+                                  meta,
                                 ],
                               ],
                             ),
