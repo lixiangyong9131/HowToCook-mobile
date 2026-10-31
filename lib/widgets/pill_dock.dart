@@ -19,14 +19,16 @@ class PillDock extends StatelessWidget {
     this.icons = const [
       Icons.home_outlined,
       Icons.favorite_border,
+      Icons.tips_and_updates_outlined,
       Icons.person_outline,
     ],
     this.selectedIcons = const [
       Icons.home_rounded,
       Icons.favorite,
+      Icons.tips_and_updates,
       Icons.person,
     ],
-    this.labels = const ['首页', '收藏', '我的'],
+    this.labels = const ['首页', '收藏', '小知识', '我的'],
     this.iconKeys,
   });
 

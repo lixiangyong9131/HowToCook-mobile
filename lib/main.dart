@@ -5,11 +5,13 @@ import 'services/favorites_store.dart';
 import 'services/history_store.dart';
 import 'services/process_image_service.dart';
 import 'services/recipe_repository.dart';
+import 'services/tips_repository.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await RecipeRepository.instance.load();
+  await TipsRepository.instance.load();
   await ProcessImageService.instance.ensureLoaded();
   final favorites = FavoritesStore();
   await favorites.load();

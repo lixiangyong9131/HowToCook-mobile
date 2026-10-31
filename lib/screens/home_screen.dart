@@ -90,17 +90,23 @@ class HomeScreen extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              for (final q in history.searches.take(12))
-                                ActionChip(
+                          // Single horizontal row · up to 20 · swipe to browse
+                          SizedBox(
+                            height: 40,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: history.searches.take(20).length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(width: 8),
+                              itemBuilder: (context, i) {
+                                final q = history.searches[i];
+                                return ActionChip(
                                   label: Text(q),
                                   backgroundColor: Colors.white,
+                                  visualDensity: VisualDensity.compact,
                                   side: BorderSide(
-                                    color:
-                                        AppTheme.coral.withValues(alpha: 0.28),
+                                    color: AppTheme.coral
+                                        .withValues(alpha: 0.28),
                                   ),
                                   avatar: const Icon(
                                     Icons.history,
@@ -109,8 +115,9 @@ class HomeScreen extends StatelessWidget {
                                   ),
                                   onPressed: () =>
                                       _openSearch(context, initial: q),
-                                ),
-                            ],
+                                );
+                              },
+                            ),
                           ),
                         ],
                         const SizedBox(height: 22),

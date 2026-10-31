@@ -6,6 +6,7 @@ import '../widgets/pill_dock.dart';
 import 'about_screen.dart';
 import 'favorites_screen.dart';
 import 'home_screen.dart';
+import 'tips_screen.dart';
 
 class ShellScreen extends StatefulWidget {
   const ShellScreen({super.key});
@@ -23,12 +24,13 @@ class _ShellScreenState extends State<ShellScreen>
   Offset _revealOrigin = Offset.zero;
 
   late final AnimationController _reveal;
-  final _tabKeys = List.generate(3, (_) => GlobalKey());
+  final _tabKeys = List.generate(4, (_) => GlobalKey());
 
   // Distinct instances — never mount the same one twice.
   final _pages = const <Widget>[
     HomeScreen(),
     FavoritesScreen(),
+    TipsScreen(),
     AboutScreen(),
   ];
 
@@ -60,7 +62,7 @@ class _ShellScreenState extends State<ShellScreen>
     final origin = (box != null && box.hasSize)
         ? box.localToGlobal(box.size.center(Offset.zero))
         : Offset(
-            MediaQuery.sizeOf(context).width * (i + 0.5) / 3,
+            MediaQuery.sizeOf(context).width * (i + 0.5) / 4,
             MediaQuery.sizeOf(context).height - 40,
           );
     setState(() {
