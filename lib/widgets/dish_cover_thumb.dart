@@ -78,7 +78,7 @@ class DishHeaderBackdrop extends StatelessWidget {
 
 
 /// Full-row list background: process-image band as width-filled cover.
-/// Skips the top ~1/8 (often letterbox / chrome), then takes the next ~1/4.
+/// Skips the top ~1/9 (often letterbox / chrome), then takes the next ~1/4.
 /// Puts [child] above a readability scrim (no side logo thumb).
 class DishCoverRowBackground extends StatelessWidget {
   final Recipe? recipe;
@@ -97,17 +97,17 @@ class DishCoverRowBackground extends StatelessWidget {
   });
 
   /// Ignore this fraction from the very top of the process image.
-  static const double skipTop = 0.125;
+  static const double skipTop = 1 / 9;
 
   /// Vertical band height (of full image) used as the row cover.
   static const double bandHeight = 0.25;
 
   /// Align.y so [skipTop, skipTop+bandHeight] is the visible band.
-  /// y = 2*skipTop/(1-bandHeight) - 1
-  static const Alignment _bandAlign = Alignment(0, -2 / 3);
+  /// y = 2*skipTop/(1-bandHeight) - 1 = 2/(9*0.75) - 1 = 8/27 - 1 = -19/27
+  static const Alignment _bandAlign = Alignment(0, -19 / 27);
 
   static const _ua = {
-    'User-Agent': 'HowToCook-mobile/0.6.26',
+    'User-Agent': 'HowToCook-mobile/0.6.27',
     'Accept': 'image/jpeg,image/*;q=0.8',
   };
 

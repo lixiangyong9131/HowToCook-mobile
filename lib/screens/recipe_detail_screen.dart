@@ -38,9 +38,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   final ValueNotifier<double> _favScaleN = ValueNotifier<double>(1);
   bool _hasProcessImage = false;
   /// Immersive side tabs: null = image only, 0 = 文字描述, 1 = 必备原料.
-  int? _immersivePanel;
+  /// ValueNotifier so toggling panels / 喜欢 chrome never setStates this
+  /// screen (which used to recreate ProcessImageViewer loader → flicker).
+  final ValueNotifier<int?> _immersivePanelN = ValueNotifier<int?>(null);
   /// Drives slide; kept true until exit animation finishes.
-  bool _panelOpen = false;
+  final ValueNotifier<bool> _panelOpenN = ValueNotifier<bool>(false);
   /// Step indices whose timer finished → stamped 「计时已完成」.
   final Set<int> _timerDoneSteps = {};
   /// Which step the running timer belongs to (null = app-bar / free timer).
@@ -184,6 +186,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     _remainingN.dispose();
     _favScaleN.dispose();
     _totalN.dispose();
+    _immersivePanelN.dispose();
+    _panelOpenN.dispose();
     _tabs.dispose();
     super.dispose();
   }
@@ -484,47 +488,66 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               ),
             ),
           ),
-          // Upper-right (below action icons): 文字描述 / 必备原料 tabs.
+          // Tabs + panel listen via ValueNotifier — parent setState not used,
+          // so the pinned process image subtree is not rebuilt.
           Positioned(
             top: topPad + 52,
             right: 12,
-            child: _ImmersiveTabPills(
-              selected: _panelOpen ? _immersivePanel : null,
-              onSelect: (i) {
-                HapticFeedback.selectionClick();
-                setState(() {
-                  if (_immersivePanel == i && _panelOpen) {
-                    _panelOpen = false; // animate closed
-                  } else {
-                    _immersivePanel = i;
-                    _panelOpen = true;
-                  }
-                });
+            child: ValueListenableBuilder<int?>(
+              valueListenable: _immersivePanelN,
+              builder: (context, panel, _) {
+                return ValueListenableBuilder<bool>(
+                  valueListenable: _panelOpenN,
+                  builder: (context, open, _) {
+                    return _ImmersiveTabPills(
+                      selected: open ? panel : null,
+                      onSelect: (i) {
+                        HapticFeedback.selectionClick();
+                        if (panel == i && open) {
+                          _panelOpenN.value = false; // animate closed
+                        } else {
+                          _immersivePanelN.value = i;
+                          _panelOpenN.value = true;
+                        }
+                      },
+                    );
+                  },
+                );
               },
             ),
           ),
-          // Sliding content panel — stays mounted through exit so collapse is smooth.
-          if (_immersivePanel != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              top: MediaQuery.sizeOf(context).height * 0.32,
-              child: _ImmersiveContentPanel(
-                open: _panelOpen,
-                onClose: () => setState(() => _panelOpen = false),
-                onClosed: () {
-                  if (!mounted) return;
-                  setState(() {
-                    _immersivePanel = null;
-                    _panelOpen = false;
-                  });
-                },
-                child: _immersivePanel == 0
-                    ? _buildDescPanel()
-                    : _buildIngredientsPanel(),
-              ),
+          // Sliding content panel — Positioned must stay a direct Stack child.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            top: MediaQuery.sizeOf(context).height * 0.32,
+            child: ValueListenableBuilder<int?>(
+              valueListenable: _immersivePanelN,
+              builder: (context, panel, _) {
+                if (panel == null) {
+                  return const IgnorePointer(child: SizedBox.shrink());
+                }
+                return ValueListenableBuilder<bool>(
+                  valueListenable: _panelOpenN,
+                  builder: (context, open, _) {
+                    return _ImmersiveContentPanel(
+                      open: open,
+                      onClose: () => _panelOpenN.value = false,
+                      onClosed: () {
+                        if (!mounted) return;
+                        _immersivePanelN.value = null;
+                        _panelOpenN.value = false;
+                      },
+                      child: panel == 0
+                          ? _buildDescPanel()
+                          : _buildIngredientsPanel(),
+                    );
+                  },
+                );
+              },
             ),
+          ),
           ValueListenableBuilder<Duration?>(
             valueListenable: _remainingN,
             builder: (context, remaining, _) {
@@ -1378,18 +1401,32 @@ class _PinnedProcessImage extends StatefulWidget {
 
 class _PinnedProcessImageState extends State<_PinnedProcessImage>
     with AutomaticKeepAliveClientMixin {
+  late final Future<ProcessImageBytes?> Function() _loader;
+  late final String? _remoteUrl;
+  late final Widget _viewer;
+
   @override
   bool get wantKeepAlive => true;
 
   @override
-  Widget build(BuildContext context) {
-    super.build(context);
+  void initState() {
+    super.initState();
     final recipe = widget.recipe;
-    return ProcessImageViewer(
+    // Freeze loader / viewer so parent rebuilds cannot swap closures and
+    // trigger ProcessImageViewer.didUpdateWidget → image reload flicker.
+    _loader = () => ProcessImageService.instance.loadFor(recipe);
+    _remoteUrl = ProcessImageService.instance.remoteUrlFor(recipe);
+    _viewer = ProcessImageViewer(
       key: ValueKey('process-immersive-${recipe.id}'),
       immersive: true,
-      loader: () => ProcessImageService.instance.loadFor(recipe),
-      remoteUrl: ProcessImageService.instance.remoteUrlFor(recipe),
+      loader: _loader,
+      remoteUrl: _remoteUrl,
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return _viewer;
   }
 }

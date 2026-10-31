@@ -35,6 +35,9 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
   final _transform = TransformationController();
   bool _routeOpen = false;
   DateTime? _ignoreUntil;
+  /// Stable across parent rebuilds — avoids MemoryImage identity churn / flash.
+  Widget? _cachedImage;
+  Object? _cachedToken;
 
   bool get _isNearIdentity {
     final scale = _transform.value.getMaxScaleOnAxis();
@@ -50,7 +53,12 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
   @override
   void didUpdateWidget(covariant ProcessImageViewer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.loader != widget.loader) {
+    // Never reload just because [loader] is a new closure from parent rebuild —
+    // that was the immersive flicker when toggling 文字描述 / 喜欢 / 原料.
+    if (oldWidget.remoteUrl != widget.remoteUrl ||
+        oldWidget.immersive != widget.immersive) {
+      _cachedImage = null;
+      _cachedToken = null;
       _future = widget.loader();
     }
   }
@@ -62,7 +70,11 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
   }
 
   void _retry() {
-    setState(() => _future = widget.loader());
+    setState(() {
+      _cachedImage = null;
+      _cachedToken = null;
+      _future = widget.loader();
+    });
   }
 
   /// Single maximize path for tap and swipe-up fling.
@@ -176,10 +188,17 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
           // vertical letterbox OK. Non-immersive stays contain.
           final fit =
               widget.immersive ? BoxFit.fitWidth : BoxFit.contain;
-          final Widget img;
-          if (data.assetBytes != null) {
+          final token = data.assetBytes ?? data.file;
+          Widget img;
+          if (_cachedImage != null && identical(_cachedToken, token)) {
+            img = _cachedImage!;
+          } else if (data.assetBytes != null) {
+            // Keep the same Uint8List instance for MemoryImage cache hits.
+            final bytes = data.assetBytes is Uint8List
+                ? data.assetBytes as Uint8List
+                : Uint8List.fromList(data.assetBytes!);
             img = Image.memory(
-              Uint8List.fromList(data.assetBytes!),
+              bytes,
               fit: fit,
               width: double.infinity,
               alignment: Alignment.center,
@@ -188,6 +207,8 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
               errorBuilder: (_, __, ___) =>
                   const Center(child: Text('图片损坏')),
             );
+            _cachedImage = img;
+            _cachedToken = token;
           } else {
             img = Image.file(
               data.file!,
@@ -195,9 +216,12 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
               width: double.infinity,
               alignment: Alignment.center,
               filterQuality: FilterQuality.high,
+              gaplessPlayback: true,
               errorBuilder: (_, __, ___) =>
                   const Center(child: Text('图片损坏，请重试')),
             );
+            _cachedImage = img;
+            _cachedToken = token;
           }
           return _ZoomableImage(
             transform: _transform,
