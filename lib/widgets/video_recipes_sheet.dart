@@ -21,7 +21,11 @@ Future<void> showVideoRecipesSheet(
 
 class VideoRecipesSheet extends StatefulWidget {
   final String dishName;
-  const VideoRecipesSheet({super.key, required this.dishName});
+
+  /// Override for tests. Production uses [VideoSearchService.search].
+  final Future<VideoSearchResult> Function(String dishName)? search;
+
+  const VideoRecipesSheet({super.key, required this.dishName, this.search});
 
   @override
   State<VideoRecipesSheet> createState() => _VideoRecipesSheetState();
@@ -44,7 +48,8 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
       _error = null;
     });
     try {
-      final r = await VideoSearchService.search(widget.dishName);
+      final search = widget.search ?? VideoSearchService.search;
+      final r = await search(widget.dishName);
       if (!mounted) return;
       setState(() {
         _result = r;
@@ -64,9 +69,8 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
     final uri = Uri.parse(url);
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('无法打开链接：$url')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('无法打开链接：$url')));
     }
   }
 
@@ -154,10 +158,10 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
         ),
       );
     }
-    if (_error != null) {
+    if (_error != null || _result?.status == VideoSearchStatus.failed) {
       return _Empty(
-        message: '搜索失败',
-        searchUrl: searchUrl,
+        message: _failMessage,
+        detail: _failDetail,
         onOpen: () => _openUrl(searchUrl),
         onRetry: _load,
       );
@@ -165,8 +169,7 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
     final list = _result?.results ?? const <BiliVideo>[];
     if (list.isEmpty) {
       return _Empty(
-        message: '😔 没有找到相关视频',
-        searchUrl: searchUrl,
+        message: _emptyMessage,
         onOpen: () => _openUrl(searchUrl),
         onRetry: _load,
       );
@@ -274,14 +277,18 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
   }
 }
 
+const _failMessage = '搜索暂时失败';
+const _failDetail = '网络不稳定或被 B 站拦截，并不是这道菜没有视频';
+const _emptyMessage = '😔 没有找到相关视频';
+
 class _Empty extends StatelessWidget {
   final String message;
-  final String searchUrl;
+  final String? detail;
   final VoidCallback onOpen;
   final VoidCallback onRetry;
   const _Empty({
     required this.message,
-    required this.searchUrl,
+    this.detail,
     required this.onOpen,
     required this.onRetry,
   });
@@ -294,7 +301,23 @@ class _Empty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(message, style: const TextStyle(fontSize: 16)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16),
+            ),
+            if (detail != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                detail!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: AppTheme.muted,
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
             FilledButton(
               style: FilledButton.styleFrom(

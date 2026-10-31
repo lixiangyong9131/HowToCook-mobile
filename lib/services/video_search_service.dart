@@ -47,9 +47,7 @@ class BiliVideo {
       title: title,
       author: json['author'] as String? ?? '',
       duration: '${json['duration'] ?? ''}',
-      cover: json['pic'] as String? ??
-          json['cover'] as String? ??
-          '',
+      cover: json['pic'] as String? ?? json['cover'] as String? ?? '',
       play: _asInt(json['play'] ?? json['play_count'] ?? json['video_review']),
     );
   }
@@ -62,32 +60,68 @@ class BiliVideo {
   }
 }
 
+/// Outcome of one search, after in-service retries.
+///
+/// [ok] has videos. [empty] means Bilibili answered `code == 0` with no hits.
+/// [failed] means every attempt timed out, returned a non-200 (often HTTP 412
+/// risk-control HTML), or returned `code != 0`.
+enum VideoSearchStatus { ok, empty, failed }
+
 class VideoSearchResult {
   final List<BiliVideo> results;
   final String keyword;
+
   /// bilibili | fallback
+  ///
+  /// `bilibili` when the API returned `code == 0` (videos or a real empty).
+  /// `fallback` when the search never got that far; [searchUrl] is still set.
   final String source;
   final String searchUrl;
+  final VideoSearchStatus status;
 
   const VideoSearchResult({
     required this.results,
     required this.keyword,
     required this.source,
     required this.searchUrl,
+    required this.status,
   });
 }
 
 /// Searches Bilibili via the official web search API
-/// (`/x/web-interface/search/type`). On failure, returns an empty list with
-/// [searchUrl] pointing at search.bilibili.com for the in-app browser.
+/// (`/x/web-interface/search/type`).
+///
+/// The endpoint often answers the first call with HTTP 412 and an HTML
+/// risk-control page, then succeeds on the next call. A single failure used
+/// to be reported as "no videos". This client retries transient failures and
+/// empty payloads with a short backoff, and only then distinguishes a real
+/// empty (`code == 0`, no hits) from a failed search.
 class VideoSearchService {
-  static const _bili =
-      'https://api.bilibili.com/x/web-interface/search/type';
+  static const _bili = 'https://api.bilibili.com/x/web-interface/search/type';
+
+  static const _headers = {
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36',
+    'Referer': 'https://search.bilibili.com',
+  };
+
+  /// Pause before the 2nd and 3rd attempts. Kept short: an HTTP 412 usually
+  /// comes back in well under a second, and the next call often succeeds.
+  static const defaultRetryDelays = <Duration>[
+    Duration(milliseconds: 250),
+    Duration(milliseconds: 600),
+  ];
 
   static String searchUrlFor(String dishName) =>
       'https://search.bilibili.com/all?keyword=${Uri.encodeComponent('$dishName的做法')}';
 
-  static Future<VideoSearchResult> search(String dishName) async {
+  static Future<VideoSearchResult> search(
+    String dishName, {
+    http.Client? client,
+    Duration timeout = const Duration(seconds: 8),
+    int maxAttempts = 3,
+    List<Duration> retryDelays = defaultRetryDelays,
+    Future<void> Function(Duration delay)? backoff,
+  }) async {
     final keyword = dishName.trim();
     final searchUrl = searchUrlFor(keyword);
     if (keyword.isEmpty) {
@@ -96,47 +130,120 @@ class VideoSearchService {
         keyword: keyword,
         source: 'fallback',
         searchUrl: searchUrl,
+        status: VideoSearchStatus.empty,
       );
     }
 
-    try {
-      final uri = Uri.parse(_bili).replace(queryParameters: {
+    final attempts = maxAttempts < 1 ? 1 : maxAttempts;
+    final ownsClient = client == null;
+    final httpClient = client ?? http.Client();
+    final uri = Uri.parse(_bili).replace(
+      queryParameters: {
         'search_type': 'video',
         'keyword': '$keyword的做法',
         'page': '1',
-      });
-      final res = await http.get(uri, headers: {
-        'User-Agent':
-            'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36',
-        'Referer': 'https://search.bilibili.com',
-      }).timeout(const Duration(seconds: 8));
-      if (res.statusCode == 200) {
-        final map = jsonDecode(res.body) as Map<String, dynamic>;
-        final data = map['data'] as Map<String, dynamic>? ?? {};
-        final list = (data['result'] as List<dynamic>? ?? [])
-            .whereType<Map<String, dynamic>>()
-            .map(BiliVideo.fromJson)
-            .where((v) => v.bvid.isNotEmpty)
-            .take(12)
-            .toList();
-        if (list.isNotEmpty) {
+      },
+    );
+    final wait = backoff ?? Future<void>.delayed;
+
+    try {
+      var sawEmpty = false;
+      for (var attempt = 0; attempt < attempts; attempt++) {
+        if (attempt > 0) {
+          await wait(_delayBefore(attempt, retryDelays));
+        }
+        final parsed = await _fetchOnce(httpClient, uri, timeout);
+        if (parsed.status == VideoSearchStatus.ok) {
           return VideoSearchResult(
-            results: list,
+            results: parsed.videos,
             keyword: keyword,
             source: 'bilibili',
             searchUrl: searchUrl,
+            status: VideoSearchStatus.ok,
           );
         }
+        if (parsed.status == VideoSearchStatus.empty) sawEmpty = true;
       }
-    } catch (_) {
-      // fall through to search-page URL
-    }
 
-    return VideoSearchResult(
-      results: const [],
-      keyword: keyword,
-      source: 'fallback',
-      searchUrl: searchUrl,
-    );
+      // A code-0 empty is a real answer. Failures mixed in (412, timeout)
+      // still lose to that, because the API did confirm there were no hits.
+      // Status is `failed` only when no attempt produced code 0.
+      if (sawEmpty) {
+        return VideoSearchResult(
+          results: const [],
+          keyword: keyword,
+          source: 'bilibili',
+          searchUrl: searchUrl,
+          status: VideoSearchStatus.empty,
+        );
+      }
+      return VideoSearchResult(
+        results: const [],
+        keyword: keyword,
+        source: 'fallback',
+        searchUrl: searchUrl,
+        status: VideoSearchStatus.failed,
+      );
+    } finally {
+      if (ownsClient) httpClient.close();
+    }
   }
+
+  static Duration _delayBefore(int attempt, List<Duration> retryDelays) {
+    if (retryDelays.isEmpty) return const Duration(milliseconds: 300);
+    final index = attempt - 1;
+    if (index < retryDelays.length) return retryDelays[index];
+    return retryDelays.last;
+  }
+
+  static Future<_Attempt> _fetchOnce(
+    http.Client client,
+    Uri uri,
+    Duration timeout,
+  ) async {
+    try {
+      final res = await client.get(uri, headers: _headers).timeout(timeout);
+      if (res.statusCode != 200) return const _Attempt.failed();
+      return _parseBody(res.body);
+    } catch (_) {
+      return const _Attempt.failed();
+    }
+  }
+
+  static _Attempt _parseBody(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is! Map<String, dynamic>) return const _Attempt.failed();
+      final code = decoded['code'];
+      final data = decoded['data'];
+      final dataMap = data is Map<String, dynamic> ? data : null;
+      final list = (dataMap?['result'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(BiliVideo.fromJson)
+          .where((v) => v.bvid.isNotEmpty)
+          .take(12)
+          .toList();
+      final successCode = code == null || code == 0 || code == '0';
+      if (list.isNotEmpty && successCode) {
+        return _Attempt(VideoSearchStatus.ok, list);
+      }
+      // Only an explicit code 0 counts as "this dish has no videos".
+      // Missing code, -412, -509, and HTML bodies are transient failures.
+      if (code == 0 || code == '0') {
+        return const _Attempt(VideoSearchStatus.empty, []);
+      }
+      return const _Attempt.failed();
+    } catch (_) {
+      return const _Attempt.failed();
+    }
+  }
+}
+
+class _Attempt {
+  final VideoSearchStatus status;
+  final List<BiliVideo> videos;
+
+  const _Attempt(this.status, this.videos);
+
+  const _Attempt.failed() : this(VideoSearchStatus.failed, const []);
 }
