@@ -6,12 +6,13 @@ import '../services/history_store.dart';
 import '../services/process_image_service.dart';
 import '../services/recipe_repository.dart';
 import '../theme/app_theme.dart';
+import '../theme/doodle_icons.dart';
 import '../widgets/dish_cover_thumb.dart';
-import '../widgets/stacked_category_cards.dart';
+import 'categories_screen.dart';
 import 'category_recipes_screen.dart';
 import 'search_screen.dart';
 
-/// Home = search → history chips → Wallet 分类叠卡 → 最近浏览.
+/// Home = search → history chips → category chips → 最近浏览.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -105,8 +106,9 @@ class HomeScreen extends StatelessWidget {
                                   backgroundColor: Colors.white,
                                   visualDensity: VisualDensity.compact,
                                   side: BorderSide(
-                                    color: AppTheme.coral
-                                        .withValues(alpha: 0.28),
+                                    color: AppTheme.coral.withValues(
+                                      alpha: 0.28,
+                                    ),
                                   ),
                                   avatar: const Icon(
                                     Icons.history,
@@ -120,38 +122,49 @@ class HomeScreen extends StatelessWidget {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 22),
-                        // Wallet-style folded category stack on home
-                        Builder(
-                          builder: (context) {
-                            final db = RecipeRepository.instance.db;
-                            if (db == null || db.categories.isEmpty) {
-                              return const SizedBox.shrink();
-                            }
-                            final cats = db.categories;
-                            final counts = <String, int>{
-                              for (final c in cats)
-                                c.id: RecipeRepository.instance
-                                    .byCategory(c.id)
-                                    .length,
-                            };
-                            return StackedCategoryCards(
-                              categories: cats,
-                              counts: counts,
-                              initiallyExpanded: false,
-                              autoFanOnMount: false,
-                              openOnSwipeSettle: false,
-                              showExpandButton: true,
-                              onOpen: (cat) {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        CategoryRecipesScreen(category: cat),
+                        const SizedBox(height: 16),
+                        // Category chips from before the home wallet stack:
+                        // a filled 「分类浏览」 entry plus one chip per category.
+                        SizedBox(
+                          height: 36,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: [
+                              _FilterChip(
+                                label: '分类浏览',
+                                filled: true,
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const CategoriesScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              ...?RecipeRepository.instance.db?.categories.map(
+                                (c) => Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: _FilterChip(
+                                    label: c.name,
+                                    leading: DoodleIcons.categoryIcon(
+                                      c.id,
+                                      size: 20,
+                                    ),
+                                    onTap: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => CategoryRecipesScreen(
+                                            category: c,
+                                          ),
+                                        ),
+                                      );
+                                    },
                                   ),
-                                );
-                              },
-                            );
-                          },
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 26),
                         _SectionHeader(
@@ -184,10 +197,7 @@ class HomeScreen extends StatelessWidget {
                         final e = history.browses[i];
                         return _BrowseRow(
                           entry: e,
-                          onTap: () => openRecipeDetail(
-                            context,
-                            browse: e,
-                          ),
+                          onTap: () => openRecipeDetail(context, browse: e),
                         );
                       },
                     ),
@@ -202,14 +212,59 @@ class HomeScreen extends StatelessWidget {
 
   void _openSearch(BuildContext context, {String? initial}) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => SearchScreen(initialQuery: initial),
-      ),
+      MaterialPageRoute(builder: (_) => SearchScreen(initialQuery: initial)),
     );
   }
 }
 
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  final bool filled;
+  final Widget? leading;
 
+  const _FilterChip({
+    required this.label,
+    required this.onTap,
+    this.filled = false,
+    this.leading,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: filled ? AppTheme.coral : Colors.white,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: filled
+                ? null
+                : Border.all(color: AppTheme.navy.withValues(alpha: 0.12)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (leading != null) ...[leading!, const SizedBox(width: 6)],
+              Text(
+                label,
+                style: TextStyle(
+                  color: filled ? Colors.white : AppTheme.navy,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _SearchPill extends StatefulWidget {
   final VoidCallback onTap;
@@ -261,8 +316,10 @@ class _SearchPillState extends State<_SearchPill> {
                   fontWeight: FontWeight.w500,
                 ),
                 border: InputBorder.none,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 16,
+                ),
                 prefixIcon: Icon(Icons.search_rounded, color: AppTheme.coral),
               ),
             ),
@@ -375,7 +432,10 @@ class _EmptyHint extends StatelessWidget {
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: const TextStyle(color: AppTheme.muted, fontWeight: FontWeight.w500),
+        style: const TextStyle(
+          color: AppTheme.muted,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }
@@ -393,9 +453,7 @@ class _BrowseRow extends StatelessWidget {
     final hasImg =
         recipe != null && ProcessImageService.instance.hasImage(recipe);
     final dark = isDarkCard(color);
-    final fg = hasImg
-        ? Colors.white
-        : (dark ? Colors.white : AppTheme.navy);
+    final fg = hasImg ? Colors.white : (dark ? Colors.white : AppTheme.navy);
     return Material(
       color: Colors.transparent,
       elevation: 2,
@@ -446,8 +504,11 @@ class _BrowseRow extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.north_east_rounded,
-                  size: 18, color: fg.withValues(alpha: 0.8)),
+              Icon(
+                Icons.north_east_rounded,
+                size: 18,
+                color: fg.withValues(alpha: 0.8),
+              ),
             ],
           ),
         ),
@@ -455,4 +516,3 @@ class _BrowseRow extends StatelessWidget {
     );
   }
 }
-
