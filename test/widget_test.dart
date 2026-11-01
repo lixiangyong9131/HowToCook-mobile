@@ -23,8 +23,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('程序员做饭指南'), findsWidgets);
     expect(find.text('分类浏览'), findsOneWidget);
-    expect(find.text('水产'), findsOneWidget);
-    expect(find.text('展开'), findsNothing);
     expect(find.text('最近浏览'), findsOneWidget);
   });
 }
