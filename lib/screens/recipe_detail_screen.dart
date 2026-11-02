@@ -429,24 +429,51 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     );
   }
 
-  /// Bili TV alone at the geometric center of the process-image layer.
+  /// Bili TV at the center of the *dish photo* (top band of the 9:16 process
+  /// card), matching immersive [BoxFit.fitWidth] + vertically-centered image.
   /// White icon, no tinted circle plate; not part of the left meta column.
   Widget _buildImmersiveCenteredBiliTv() {
-    return Center(
-      child: Tooltip(
-        message: 'B 站视频做法',
-        child: InkWell(
-          onTap: _openVideo,
-          customBorder: const CircleBorder(),
-          child: const Padding(
-            padding: EdgeInsets.all(8),
-            child: BiliTvIcon(
-              size: 28,
-              color: Colors.white,
+    // Process cards are authored ~720×1289; dish photo occupies roughly the
+    // top third — its visual center sits near 15% down the card.
+    const processAspect = 720 / 1289; // width / height
+    const dishCenterAlongImage = 0.15;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final h = constraints.maxHeight;
+        final displayedH = w / processAspect;
+        final imgTop = (h - displayedH) / 2;
+        final dishCenterY = imgTop + displayedH * dishCenterAlongImage;
+        const iconBox = 44.0; // padding + 28 icon
+
+        return Stack(
+          children: [
+            Positioned(
+              top: dishCenterY - iconBox / 2,
+              left: 0,
+              right: 0,
+              height: iconBox,
+              child: Center(
+                child: Tooltip(
+                  message: 'B 站视频做法',
+                  child: InkWell(
+                    onTap: _openVideo,
+                    customBorder: const CircleBorder(),
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: BiliTvIcon(
+                        size: 28,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
+          ],
+        );
+      },
     );
   }
 
@@ -660,8 +687,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               },
             ),
           ),
-          // Bili TV alone — geometric center of the process-image layer
-          // (Positioned.fill + Center; not the left meta column).
+          // Bili TV on the dish photo at the top of the process card
+          // (not whole-screen center; not in the left meta column).
           Positioned.fill(
             child: _buildImmersiveCenteredBiliTv(),
           ),
