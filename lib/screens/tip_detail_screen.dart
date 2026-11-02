@@ -65,15 +65,20 @@ class TipDetailScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
         children: [
           if (jpeg != null)
+            // Tip cards are ~9:16; never force a shorter AspectRatio + cover
+            // (that cropped the bottom). fitWidth keeps the full frame.
             ClipRRect(
               borderRadius: BorderRadius.circular(18),
-              child: AspectRatio(
-                aspectRatio: 9 / 12,
-                child: Image.asset(
-                  jpeg,
-                  fit: BoxFit.cover,
-                  cacheWidth: (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round().clamp(400, 1600),
-                ),
+              child: Image.asset(
+                jpeg,
+                width: double.infinity,
+                fit: BoxFit.fitWidth,
+                alignment: Alignment.topCenter,
+                filterQuality: FilterQuality.medium,
+                cacheWidth: (MediaQuery.sizeOf(context).width *
+                        MediaQuery.devicePixelRatioOf(context))
+                    .round()
+                    .clamp(400, 1600),
               ),
             )
           else

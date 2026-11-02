@@ -63,7 +63,6 @@ class _TipsScreenState extends State<TipsScreen> {
       final provider = ResizeImage(
         AssetImage(asset),
         width: cachePx,
-        height: cachePx,
       );
       provider.resolve(config).addListener(
         ImageStreamListener((_, __) {}, onError: (_, __) {}),
@@ -339,23 +338,22 @@ class _TipThumb extends StatelessWidget {
     );
     if (jpeg == null) return fallback;
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        fallback,
-        FadeInImage(
-          placeholder: MemoryImage(_kTransparent1x1),
-          image: ResizeImage(
-            AssetImage(jpeg!),
-            width: cachePx,
-            height: cachePx,
-          ),
-          fit: BoxFit.cover,
-          fadeInDuration: const Duration(milliseconds: 180),
-          fadeOutDuration: const Duration(milliseconds: 80),
-          imageErrorBuilder: (_, __, ___) => fallback,
+    // contain + accent letterbox: show the full tip card (incl. bottom),
+    // never BoxFit.cover-crop in the 64×64 slot.
+    return ColoredBox(
+      color: accent,
+      child: FadeInImage(
+        placeholder: MemoryImage(_kTransparent1x1),
+        image: ResizeImage(
+          AssetImage(jpeg!),
+          width: cachePx,
         ),
-      ],
+        fit: BoxFit.contain,
+        alignment: Alignment.center,
+        fadeInDuration: const Duration(milliseconds: 180),
+        fadeOutDuration: const Duration(milliseconds: 80),
+        imageErrorBuilder: (_, __, ___) => fallback,
+      ),
     );
   }
 }

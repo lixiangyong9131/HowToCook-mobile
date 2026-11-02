@@ -374,6 +374,88 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     return Wrap(spacing: 8, runSpacing: 6, children: chips);
   }
 
+
+  /// Mid-screen immersive chrome: [calories] [TV] on one row, time under
+  /// calories, then 文字描述 / 必备原料 pills. White TV, no coral plate.
+  Widget _buildImmersiveMidChrome() {
+    final chips = _metaChipList(onDark: true);
+    Widget? calorie;
+    Widget? time;
+    if (_parsed.calories != null && chips.isNotEmpty) {
+      calorie = chips.first;
+      if (_parsed.cookTime != null && chips.length > 1) {
+        time = chips[1];
+      }
+    } else if (_parsed.cookTime != null && chips.isNotEmpty) {
+      time = chips.first;
+    }
+
+    final tv = Tooltip(
+      message: 'B 站视频做法',
+      child: InkWell(
+        onTap: _openVideo,
+        customBorder: const CircleBorder(),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: BiliTvIcon(
+            size: 28,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (calorie != null) ...[
+              calorie,
+              const SizedBox(width: 10),
+            ],
+            // If no calorie chip, keep TV on the first meta row with time.
+            if (calorie == null && time != null) ...[
+              time,
+              const SizedBox(width: 10),
+            ],
+            tv,
+          ],
+        ),
+        if (calorie != null && time != null) ...[
+          const SizedBox(height: 6),
+          time,
+        ],
+        const SizedBox(height: 8),
+        ValueListenableBuilder<int?>(
+          valueListenable: _immersivePanelN,
+          builder: (context, panel, _) {
+            return ValueListenableBuilder<bool>(
+              valueListenable: _panelOpenN,
+              builder: (context, open, _) {
+                return _ImmersiveTabPills(
+                  selected: open ? panel : null,
+                  onSelect: (i) {
+                    HapticFeedback.selectionClick();
+                    if (panel == i && open) {
+                      _panelOpenN.value = false;
+                    } else {
+                      _immersivePanelN.value = i;
+                      _panelOpenN.value = true;
+                    }
+                  },
+                );
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final recipe = widget.recipe;
@@ -547,66 +629,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                             ),
                           ),
                         ],
-                        // Meta chips + bili TV share one left column so the TV
-                        // sits centered under calories/time — not screen-centered.
-                        const SizedBox(height: 6),
-                        IntrinsicWidth(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_metaBlock(onDark: true, vertical: true)
-                                  case final meta?)
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: meta,
-                                ),
-                              // Compact TV under meta — keeps pills close to time.
-                              const SizedBox(height: 2),
-                              Tooltip(
-                                message: 'B 站视频做法',
-                                child: InkWell(
-                                  onTap: _openVideo,
-                                  customBorder: const CircleBorder(),
-                                  child: const Padding(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 4,
-                                    ),
-                                    child: BiliTvIcon(
-                                      size: 26,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Pills sit just under the TV / time column.
-                        const SizedBox(height: 2),
-                        ValueListenableBuilder<int?>(
-                          valueListenable: _immersivePanelN,
-                          builder: (context, panel, _) {
-                            return ValueListenableBuilder<bool>(
-                              valueListenable: _panelOpenN,
-                              builder: (context, open, _) {
-                                return _ImmersiveTabPills(
-                                  selected: open ? panel : null,
-                                  onSelect: (i) {
-                                    HapticFeedback.selectionClick();
-                                    if (panel == i && open) {
-                                      _panelOpenN.value = false;
-                                    } else {
-                                      _immersivePanelN.value = i;
-                                      _panelOpenN.value = true;
-                                    }
-                                  },
-                                );
-                              },
-                            );
-                          },
-                        ),
                       ],
                     ),
                   ),
@@ -614,9 +636,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               ),
             ),
           ),
-          // Tap photo below chrome to dismiss. Leave title/meta/bili/pills tappable.
+          // Dim photo when panel open. Mid meta/TV/pills sit above this layer.
           Positioned(
-            top: topPad + 340,
+            top: topPad + 140,
             left: 0,
             right: 0,
             bottom: 0,
@@ -642,13 +664,19 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               },
             ),
           ),
-          // Sliding content panel — Positioned must stay a direct Stack child.
+          // Calories | TV same row; vertical ~screen center (not stuck under title).
+          Positioned(
+            left: 16,
+            right: 16,
+            top: MediaQuery.sizeOf(context).height * 0.46,
+            child: _buildImmersiveMidChrome(),
+          ),
+          // Sliding content panel — can grow to near the top of the screen.
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
-            // Stay below compact chrome (difficulty→meta→bili→pills).
-            top: topPad + 340,
+            top: topPad,
             child: ValueListenableBuilder<int?>(
               valueListenable: _immersivePanelN,
               builder: (context, panel, _) {
@@ -1387,10 +1415,10 @@ class _ImmersiveContentPanel extends StatefulWidget {
 
 class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
     with SingleTickerProviderStateMixin {
-  /// Fraction of the max panel area height (0 = closed, 1 = full area).
+  /// Fraction of the max panel area height (0 = closed, 1 = near screen top).
   static const _half = 0.52;
-  static const _large = 0.82;
-  static const _dismiss = 0.18;
+  static const _full = 1.0;
+  static const _dismiss = 0.14;
 
   late final AnimationController _ctrl;
   /// Height fraction owned by a notifier so drag updates never fight the
@@ -1485,32 +1513,17 @@ class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
 
   void _snapAfterDrag(double velocityDy) {
     final heightFrac = _heightFracN.value;
-    // Fast fling down → close.
-    if (velocityDy > 900 || heightFrac < _dismiss) {
+    // Swipe / fling down → drop to bottom and close.
+    if (velocityDy > 700 || heightFrac < _dismiss) {
       widget.onClose();
       return;
     }
-    if (velocityDy < -700) {
-      _heightFracN.value = _large;
+    // Swipe / fling up → expand to near screen top (full available area).
+    if (velocityDy < -500) {
+      _heightFracN.value = _full;
       return;
     }
-    if (velocityDy > 700) {
-      _heightFracN.value = _half;
-      return;
-    }
-    const candidates = <double>[_half, _large];
-    var best = candidates.first;
-    var bestDist = (best - heightFrac).abs();
-    for (final c in candidates) {
-      final dist = (c - heightFrac).abs();
-      if (dist < bestDist) {
-        best = c;
-        bestDist = dist;
-      }
-    }
-    // Keep free height if the user paused between snap points.
-    if (bestDist > 0.12) return;
-    _heightFracN.value = best;
+    // Otherwise keep whatever height the user dragged to (any position).
   }
 
   /// Full-width drag strip via [Listener] — skips the gesture arena so it
