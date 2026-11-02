@@ -338,8 +338,8 @@ class _TipThumb extends StatelessWidget {
     );
     if (jpeg == null) return fallback;
 
-    // contain + accent letterbox: show the full tip card (incl. bottom),
-    // never BoxFit.cover-crop in the 64×64 slot.
+    // cover fills the 64×64 slot (9:16 tip cards crop top/bottom slightly);
+    // avoids accent letterbox gutters that looked like empty margins.
     return ColoredBox(
       color: accent,
       child: FadeInImage(
@@ -348,7 +348,7 @@ class _TipThumb extends StatelessWidget {
           AssetImage(jpeg!),
           width: cachePx,
         ),
-        fit: BoxFit.contain,
+        fit: BoxFit.cover,
         alignment: Alignment.center,
         fadeInDuration: const Duration(milliseconds: 180),
         fadeOutDuration: const Duration(milliseconds: 80),

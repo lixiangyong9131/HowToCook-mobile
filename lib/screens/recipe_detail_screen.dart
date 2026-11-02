@@ -530,7 +530,33 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               ),
             ),
           ),
+          // Dim full-bleed when panel open (no hard edge / dividing line).
+          // Chrome + left meta + centered TV sit above this layer.
+          Positioned.fill(
+            child: ValueListenableBuilder<int?>(
+              valueListenable: _immersivePanelN,
+              builder: (context, panel, _) {
+                return ValueListenableBuilder<bool>(
+                  valueListenable: _panelOpenN,
+                  builder: (context, open, _) {
+                    if (panel == null || !open) {
+                      return const IgnorePointer(child: SizedBox.shrink());
+                    }
+                    return GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        _panelOpenN.value = false;
+                      },
+                      child: const ColoredBox(color: Color(0x33000000)),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
           // App chrome + title / difficulty / calories / cook time.
+          // Above the dim so there is no gray band / seam under the status bar.
           Positioned(
             top: 0,
             left: 0,
@@ -657,34 +683,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                   ),
                 ],
               ),
-            ),
-          ),
-          // Dim photo when panel open. Left meta + centered TV sit above this.
-          Positioned(
-            top: topPad + 140,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: ValueListenableBuilder<int?>(
-              valueListenable: _immersivePanelN,
-              builder: (context, panel, _) {
-                return ValueListenableBuilder<bool>(
-                  valueListenable: _panelOpenN,
-                  builder: (context, open, _) {
-                    if (panel == null || !open) {
-                      return const IgnorePointer(child: SizedBox.shrink());
-                    }
-                    return GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        _panelOpenN.value = false;
-                      },
-                      child: const ColoredBox(color: Color(0x33000000)),
-                    );
-                  },
-                );
-              },
             ),
           ),
           // Bili TV on the dish photo at the top of the process card
@@ -1550,6 +1548,8 @@ class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
   /// Full-width drag strip via [Listener] — skips the gesture arena so it
   /// does not lose to the immersive [InteractiveViewer] pan/scale below.
   Widget _dragStrip(double maxH) {
+    // Larger hit target (~40dp) so the handle is easier to grab; visual bar
+    // is only slightly thicker so it does not dominate the sheet chrome.
     return Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: _onPointerDown,
@@ -1558,13 +1558,13 @@ class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
       onPointerCancel: _onPointerEnd,
       child: SizedBox(
         width: double.infinity,
-        height: 36,
+        height: 40,
         child: Center(
           child: Container(
-            width: 44,
-            height: 5,
+            width: 48,
+            height: 6,
             decoration: BoxDecoration(
-              color: AppTheme.muted.withValues(alpha: 0.35),
+              color: AppTheme.muted.withValues(alpha: 0.42),
               borderRadius: BorderRadius.circular(999),
             ),
           ),
