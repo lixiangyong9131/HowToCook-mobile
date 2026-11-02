@@ -10,13 +10,27 @@ import 'bili_video_player_dialog.dart';
 Future<void> showVideoRecipesSheet(
   BuildContext context, {
   required String dishName,
-}) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => VideoRecipesSheet(dishName: dishName),
-  );
+}) async {
+  final name = dishName.trim();
+  if (name.isEmpty) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(content: Text('暂无菜名，无法搜索视频')),
+    );
+    return;
+  }
+  try {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => VideoRecipesSheet(dishName: name),
+    );
+  } catch (_) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(content: Text('暂时无法打开视频列表，请稍后重试')),
+    );
+  }
 }
 
 class VideoRecipesSheet extends StatefulWidget {
@@ -43,10 +57,12 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final search = widget.search ?? VideoSearchService.search;
       final r = await search(widget.dishName);
@@ -54,11 +70,21 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
       setState(() {
         _result = r;
         _loading = false;
+        // Never surface raw exceptions — failed status uses soft copy.
+        _error = null;
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
+      // Soft failure flag only; UI shows [_failMessage], not the exception.
       setState(() {
-        _error = '$e';
+        _error = 'failed';
+        _result = VideoSearchResult(
+          results: const [],
+          keyword: widget.dishName,
+          source: 'fallback',
+          searchUrl: VideoSearchService.searchUrlFor(widget.dishName),
+          status: VideoSearchStatus.failed,
+        );
         _loading = false;
       });
     }
@@ -66,11 +92,19 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
 
   Future<void> _openUrl(String url) async {
     HapticFeedback.selectionClick();
-    final uri = Uri.parse(url);
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('无法打开链接：$url')));
+    try {
+      final uri = Uri.parse(url);
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('无法打开 B 站链接，请稍后重试')),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法打开 B 站链接，请稍后重试')),
+      );
     }
   }
 
@@ -185,7 +219,16 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
           borderRadius: BorderRadius.circular(18),
           child: InkWell(
             borderRadius: BorderRadius.circular(18),
-            onTap: () => showBiliVideoPlayer(context, video: v),
+            onTap: () async {
+              try {
+                await showBiliVideoPlayer(context, video: v);
+              } catch (_) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('暂时无法播放，请稍后重试')),
+                );
+              }
+            },
             child: Padding(
               padding: const EdgeInsets.all(10),
               child: Row(
@@ -202,6 +245,11 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
                           Image.network(
                             v.coverHttps,
                             fit: BoxFit.cover,
+                            headers: const {
+                              'User-Agent':
+                                  'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36',
+                              'Referer': 'https://www.bilibili.com/',
+                            },
                             errorBuilder: (_, __, ___) => Container(
                               color: AppTheme.lilac,
                               alignment: Alignment.center,

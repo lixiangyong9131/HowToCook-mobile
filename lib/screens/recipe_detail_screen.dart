@@ -286,10 +286,23 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
 
   void _openVideo() {
     HapticFeedback.selectionClick();
-    showVideoRecipesSheet(
-      context,
-      dishName: _parsed.title.isNotEmpty ? _parsed.title : widget.recipe.title,
-    );
+    // Avoid gesture/route contention with an open immersive panel.
+    if (_panelOpenN.value) {
+      _panelOpenN.value = false;
+    }
+    final dishName =
+        _parsed.title.isNotEmpty ? _parsed.title : widget.recipe.title;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      try {
+        await showVideoRecipesSheet(context, dishName: dishName);
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('暂时无法打开视频，请稍后重试')),
+        );
+      }
+    });
   }
 
   String _formatCookTime(Duration d) {
@@ -522,7 +535,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                             ),
                           ),
                         ],
-                        const SizedBox(height: 10),
+                        // Calories / time sit tight under difficulty — no bili gap.
+                        if (_metaBlock(onDark: true, vertical: true)
+                            case final meta?) ...[
+                          const SizedBox(height: 6),
+                          meta,
+                        ],
+                        // White bili TV between meta chips and 文字描述/必备原料.
+                        const SizedBox(height: 8),
                         Center(
                           child: IconButton(
                             tooltip: 'B 站视频做法',
@@ -533,12 +553,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                             ),
                           ),
                         ),
-                        if (_metaBlock(onDark: true, vertical: true)
-                            case final meta?) ...[
-                          const SizedBox(height: 8),
-                          meta,
-                        ],
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
                         ValueListenableBuilder<int?>(
                           valueListenable: _immersivePanelN,
                           builder: (context, panel, _) {
@@ -568,10 +583,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               ),
             ),
           ),
-          // Tap the photo below the vertical meta/actions to dismiss. Leave the
-          // title, bili icon, meta, and pills uncovered so they stay tappable.
+          // Tap photo below chrome to dismiss. Leave title/meta/bili/pills tappable.
           Positioned(
-            top: topPad + 420,
+            top: topPad + 360,
             left: 0,
             right: 0,
             bottom: 0,
@@ -602,8 +616,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             left: 0,
             right: 0,
             bottom: 0,
-            // Stay below the title, bili icon, vertical meta, and pills.
-            top: topPad + 420,
+            // Stay below compact chrome (difficulty→meta→bili→pills).
+            top: topPad + 360,
             child: ValueListenableBuilder<int?>(
               valueListenable: _immersivePanelN,
               builder: (context, panel, _) {
@@ -1342,27 +1356,35 @@ class _ImmersiveContentPanel extends StatefulWidget {
 
 class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
     with SingleTickerProviderStateMixin {
+  /// Fraction of the max panel area height (0 = closed, 1 = full area).
+  static const _half = 0.52;
+  static const _large = 0.82;
+  static const _dismiss = 0.18;
+
   late final AnimationController _ctrl;
-  late final Animation<double> _t;
+  double _heightFrac = _half;
+  bool _dragging = false;
 
   @override
   void initState() {
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 380),
-      reverseDuration: const Duration(milliseconds: 420),
+      duration: const Duration(milliseconds: 320),
+      reverseDuration: const Duration(milliseconds: 360),
       value: widget.open ? 0 : 1,
     );
-    _t = CurvedAnimation(
-      parent: _ctrl,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
+    _ctrl.addStatusListener(_onStatus);
+    _ctrl.addListener(_onAnimTick);
     if (widget.open) {
+      _heightFrac = _half;
       _ctrl.forward();
     }
-    _ctrl.addStatusListener(_onStatus);
+  }
+
+  void _onAnimTick() {
+    if (_dragging) return;
+    if (mounted) setState(() {});
   }
 
   void _onStatus(AnimationStatus s) {
@@ -1376,7 +1398,8 @@ class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
     super.didUpdateWidget(oldWidget);
     if (widget.open != oldWidget.open) {
       if (widget.open) {
-        _ctrl.forward();
+        _heightFrac = _half;
+        _ctrl.forward(from: 0);
       } else {
         _ctrl.reverse();
       }
@@ -1386,62 +1409,159 @@ class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
   @override
   void dispose() {
     _ctrl.removeStatusListener(_onStatus);
+    _ctrl.removeListener(_onAnimTick);
     _ctrl.dispose();
     super.dispose();
   }
 
+  double get _openT => _ctrl.value;
+
+  double _visualFrac() {
+    if (_dragging) return _heightFrac;
+    // Closing: shrink with the controller; opening: grow to target frac.
+    if (_ctrl.status == AnimationStatus.reverse ||
+        (_ctrl.status == AnimationStatus.dismissed && !widget.open)) {
+      return _heightFrac * _openT;
+    }
+    return _heightFrac * _openT;
+  }
+
+  void _onDragStart(DragStartDetails _) {
+    _dragging = true;
+    _ctrl.stop();
+    if (_ctrl.value < 1) {
+      _ctrl.value = 1;
+    }
+  }
+
+  void _onDragUpdate(DragUpdateDetails d, double maxH) {
+    if (maxH <= 0) return;
+    final deltaFrac = -d.delta.dy / maxH;
+    setState(() {
+      _heightFrac = (_heightFrac + deltaFrac).clamp(0.0, 1.0);
+    });
+  }
+
+  void _onDragEnd(DragEndDetails d) {
+    _dragging = false;
+    final v = d.primaryVelocity ?? 0;
+    // Fast fling down → close.
+    if (v > 900 || _heightFrac < _dismiss) {
+      widget.onClose();
+      return;
+    }
+    // Snap to nearest of half / large (or keep free if mid and slow).
+    final candidates = <double>[_half, _large];
+    if (v < -700) {
+      // Fling up → prefer large.
+      setState(() => _heightFrac = _large);
+      return;
+    }
+    if (v > 700) {
+      setState(() => _heightFrac = _half);
+      return;
+    }
+    var best = candidates.first;
+    var bestDist = (best - _heightFrac).abs();
+    for (final c in candidates) {
+      final dist = (c - _heightFrac).abs();
+      if (dist < bestDist) {
+        best = c;
+        bestDist = dist;
+      }
+    }
+    // Free height if close to neither snap and user paused mid-drag.
+    if (bestDist > 0.12) {
+      setState(() {}); // keep free _heightFrac
+      return;
+    }
+    setState(() => _heightFrac = best);
+  }
+
+  Widget _handle(double maxH) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onVerticalDragStart: _onDragStart,
+      onVerticalDragUpdate: (d) => _onDragUpdate(d, maxH),
+      onVerticalDragEnd: _onDragEnd,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 44,
+            height: 5,
+            decoration: BoxDecoration(
+              color: AppTheme.muted.withValues(alpha: 0.35),
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _t,
-      builder: (context, child) {
-        final v = _t.value;
-        return Opacity(
-          opacity: v.clamp(0.0, 1.0),
-          child: Transform.translate(
-            offset: Offset(0, (1 - v) * 56),
-            child: child,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxH = constraints.maxHeight;
+        final frac = _visualFrac().clamp(0.0, 1.0);
+        final h = (maxH * frac).clamp(0.0, maxH);
+        final opacity = frac <= 0.02 ? 0.0 : (frac / 0.12).clamp(0.0, 1.0);
+        // Below chrome height, only paint the drag bar — avoids Expanded
+        // overflow yellow/black flash while the sheet is growing/shrinking.
+        final showBody = h >= 132;
+
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: Opacity(
+            opacity: opacity,
+            child: SizedBox(
+              height: h,
+              width: double.infinity,
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
+                child: DecoratedBox(
+                  // Clean cream card — no BoxShadow / elevation (avoids dirty
+                  // rectangular grey blobs outside the rounded top corners).
+                  decoration: const BoxDecoration(
+                    color: AppTheme.bg,
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                  ),
+                  child: showBody
+                      ? Column(
+                          children: [
+                            _handle(maxH),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: IconButton(
+                                tooltip: '关闭',
+                                onPressed: widget.onClose,
+                                icon: const Icon(
+                                  Icons.close_rounded,
+                                  color: AppTheme.muted,
+                                ),
+                              ),
+                            ),
+                            Expanded(child: widget.child),
+                          ],
+                        )
+                      : Align(
+                          alignment: Alignment.topCenter,
+                          child: _handle(maxH),
+                        ),
+                ),
+              ),
+            ),
           ),
         );
       },
-      child: Material(
-        color: Colors.transparent,
-        child: Container(
-          decoration: const BoxDecoration(
-            color: AppTheme.bg,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            boxShadow: [
-              BoxShadow(
-                color: Color(0x66000000),
-                blurRadius: 24,
-                offset: Offset(0, -4),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppTheme.muted.withValues(alpha: 0.35),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: IconButton(
-                  tooltip: '关闭',
-                  onPressed: widget.onClose,
-                  icon: const Icon(Icons.close_rounded, color: AppTheme.muted),
-                ),
-              ),
-              Expanded(child: widget.child),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

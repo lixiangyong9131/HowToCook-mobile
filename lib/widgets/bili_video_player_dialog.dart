@@ -20,12 +20,25 @@ const _kMobileUa =
 Future<void> showBiliVideoPlayer(
   BuildContext context, {
   required BiliVideo video,
-}) {
-  return showDialog<void>(
-    context: context,
-    barrierDismissible: true,
-    builder: (_) => BiliVideoPlayerDialog(video: video),
-  );
+}) async {
+  if (video.bvid.trim().isEmpty && video.watchUrl.trim().isEmpty) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(content: Text('无效的视频链接')),
+    );
+    return;
+  }
+  try {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => BiliVideoPlayerDialog(video: video),
+    );
+  } catch (_) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      const SnackBar(content: Text('暂时无法播放，请稍后重试或到 B 站打开')),
+    );
+  }
 }
 
 class BiliVideoPlayerDialog extends StatefulWidget {
@@ -147,6 +160,18 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
           onWebResourceError: (err) {
             if (err.isForMainFrame != true) return;
             if (!_alive || !mounted) return;
+            // Embed/m.bili often abort the first main-frame load during
+            // redirects; showing that as an error causes a one-frame flash.
+            final desc = err.description.toLowerCase();
+            final code = err.errorCode;
+            if (code == -3 /* ERR_ABORTED */ ||
+                code == -999 /* NSURLErrorCancelled */ ||
+                desc.contains('abort') ||
+                desc.contains('cancel') ||
+                desc.contains('interrupt') ||
+                desc.contains('replaced')) {
+              return;
+            }
             setState(() {
               _loading = false;
               _error = err.description.isNotEmpty
@@ -164,6 +189,9 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
               return;
             }
             if (!_alive || !mounted) return;
+            // Ignore transient risk-control / redirect codes that clear on
+            // the next navigation — prevents a red error flash.
+            if (code == 412 || code == 403 || code == 429) return;
             if (code >= 500 || code == 404) {
               setState(() {
                 _loading = false;
@@ -183,11 +211,11 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
       );
 
       await _loadCurrent();
-    } catch (e) {
+    } catch (_) {
       if (!_alive || !mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = '播放器初始化失败，请重试或到 B 站打开';
       });
     }
   }
@@ -207,11 +235,11 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
     });
     try {
       await _controller.loadRequest(_headersUri, headers: _headers);
-    } catch (e) {
+    } catch (_) {
       if (!_alive || !mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString();
+        _error = '播放页加载失败，请重试或到 B 站打开';
       });
     }
   }
