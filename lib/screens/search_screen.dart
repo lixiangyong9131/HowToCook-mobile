@@ -498,7 +498,7 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-/// History chip: coral outline + history icon + trailing delete.
+/// History chip: coral outline + label + trailing delete (no leading history icon).
 class _HistoryChip extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
@@ -519,7 +519,7 @@ class _HistoryChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(10, 7, 4, 7),
+          padding: const EdgeInsets.fromLTRB(12, 7, 4, 7),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
@@ -529,8 +529,6 @@ class _HistoryChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.history_rounded, size: 15, color: AppTheme.coral),
-              const SizedBox(width: 6),
               Text(
                 label,
                 style: const TextStyle(
