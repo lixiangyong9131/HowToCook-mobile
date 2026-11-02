@@ -50,6 +50,47 @@ class MainActivity : FlutterActivity() {
                         openInstallPermissionSettings()
                         result.success(null)
                     }
+                    // Background APK update via system DownloadManager
+                    "enqueueApkDownload" -> {
+                        val url = call.argument<String>("url")
+                        val versionTag = call.argument<String>("tag") ?: ""
+                        if (url.isNullOrBlank()) {
+                            result.error("bad_args", "url required", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            val id = ApkDownloadHelper.enqueue(this, url, versionTag)
+                            result.success(
+                                mapOf(
+                                    "downloadId" to id,
+                                    "path" to ApkDownloadHelper.destinationFile(this).absolutePath,
+                                ),
+                            )
+                        } catch (e: Exception) {
+                            Log.e(tag, "enqueueApkDownload failed", e)
+                            result.error("enqueue_failed", e.message, null)
+                        }
+                    }
+                    "queryApkDownload" -> {
+                        val id = call.argument<Number>("downloadId")?.toLong()
+                        if (id == null || id < 0) {
+                            result.error("bad_args", "downloadId required", null)
+                            return@setMethodCallHandler
+                        }
+                        result.success(ApkDownloadHelper.query(this, id))
+                    }
+                    "activeApkDownload" -> {
+                        result.success(ApkDownloadHelper.activeMeta(this))
+                    }
+                    "removeApkDownload" -> {
+                        val id = call.argument<Number>("downloadId")?.toLong()
+                        if (id != null && id > 0) {
+                            ApkDownloadHelper.remove(this, id)
+                        } else {
+                            ApkDownloadHelper.clearMeta(this)
+                        }
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }

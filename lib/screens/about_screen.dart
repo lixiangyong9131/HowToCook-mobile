@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -30,11 +31,91 @@ class _AboutScreenState extends State<AboutScreen> {
       if (mounted) setState(() => _version = '${i.version}+${i.buildNumber}');
     });
     _refreshCachedApk();
+    // 杀进程后回来：若 DownloadManager 已完成/进行中，恢复进度或可安装状态
+    _resumeBackgroundDownload();
   }
 
   Future<void> _refreshCachedApk() async {
     final c = await UpdateService.cachedApk();
     if (mounted) setState(() => _cachedApk = c);
+  }
+
+  Future<void> _resumeBackgroundDownload() async {
+    if (kIsWeb || !Platform.isAndroid) return;
+    final job = await UpdateService.activeDownload();
+    if (job == null || !mounted) return;
+    if (job.status == 'successful' && job.path != null) {
+      try {
+        await UpdateService.finalizeDownloadJob(
+          job,
+          apkUrl: job.url ?? '',
+          tag: job.tag ?? 'update',
+          install: false,
+        );
+        await _refreshCachedApk();
+      } catch (_) {}
+      return;
+    }
+    if (job.status == 'running' ||
+        job.status == 'pending' ||
+        job.status == 'paused') {
+      if (!mounted) return;
+      setState(() {
+        _checking = true;
+        _downloadProgress = job.progress ?? 0;
+      });
+      // Keep polling until terminal — DownloadManager continues in background.
+      unawaited(_pollActiveDownload(job.downloadId));
+    }
+  }
+
+  Future<void> _pollActiveDownload(int downloadId) async {
+    while (mounted && _checking) {
+      final job = await UpdateService.queryDownload(downloadId);
+      if (job == null) break;
+      if (mounted && job.progress != null) {
+        setState(() => _downloadProgress = job.progress);
+      }
+      if (job.status == 'successful') {
+        try {
+          final meta = await UpdateService.activeDownload();
+          final msg = await UpdateService.finalizeDownloadJob(
+            job,
+            apkUrl: meta?.url ?? job.url ?? '',
+            tag: meta?.tag ?? job.tag ?? 'update',
+            install: true,
+          );
+          if (!mounted) return;
+          await _refreshCachedApk();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg), duration: const Duration(seconds: 5)),
+          );
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('下载已完成但安装失败：$e')),
+            );
+          }
+        }
+        break;
+      }
+      if (job.status == 'failed' || job.status == 'missing') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('后台下载失败，请重新检查更新')),
+          );
+        }
+        break;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+    if (mounted) {
+      setState(() {
+        _checking = false;
+        _downloadProgress = null;
+      });
+    }
   }
 
   Future<void> _checkUpdate() async {
@@ -251,10 +332,10 @@ class _AboutScreenState extends State<AboutScreen> {
               icon: Icons.system_update_rounded,
               title: _checking ? '正在检查…' : '检查更新',
               subtitle: _downloadProgress != null
-                  ? '下载中 ${(_downloadProgress! * 100).toStringAsFixed(0)}%'
+                  ? '后台下载中 ${(_downloadProgress! * 100).toStringAsFixed(0)}% · 可切走'
                   : (_cachedApk != null
                       ? '已缓存 ${_cachedApk!.tag.isEmpty ? "安装包" : _cachedApk!.tag}'
-                      : '检查 GitHub 新版本'),
+                      : '检查 GitHub 新版本（支持后台下载）'),
               color: AppTheme.neon,
               onTap: _checking ? null : _checkUpdate,
               trailing: _downloadProgress != null

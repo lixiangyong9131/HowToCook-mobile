@@ -9,6 +9,22 @@ import '../utils/recipe_meta.dart';
 import '../widgets/recipe_card.dart';
 import '../widgets/recipe_filter_bar.dart';
 
+/// 常用搜索词（菜名 / 原料 / 做法），贴合菜谱 App。
+const kCommonSearchTerms = <String>[
+  '鸡蛋',
+  '番茄',
+  '土豆',
+  '米饭',
+  '炒菜',
+  '汤',
+  '豆腐',
+  '鸡肉',
+  '青椒',
+  '茄子',
+  '牛肉',
+  '面条',
+];
+
 class SearchScreen extends StatefulWidget {
   final String? initialQuery;
   const SearchScreen({super.key, this.initialQuery});
@@ -47,6 +63,12 @@ class _SearchScreenState extends State<SearchScreen> {
     _runSearch(value, persist: false);
   }
 
+  void _applyChip(String term) {
+    _controller.text = term;
+    _controller.selection = TextSelection.collapsed(offset: term.length);
+    _runSearch(term, persist: true);
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -56,6 +78,7 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     final q = _controller.text.trim();
+    final history = HistoryScope.of(context);
     final results = applyRecipeFilters(
       _raw,
       difficulty: _difficulty,
@@ -100,7 +123,14 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
       ),
       body: q.isEmpty
-          ? const _EmptyHint(text: '试试「番茄」「鸡蛋」「汤」')
+          ? ListenableBuilder(
+              listenable: history,
+              builder: (context, _) => _SearchLanding(
+                searches: history.searches,
+                onClearHistory: () => history.clearSearches(),
+                onPick: _applyChip,
+              ),
+            )
           : Column(
               children: [
                 Padding(
@@ -149,6 +179,118 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+class _SearchLanding extends StatelessWidget {
+  final List<String> searches;
+  final VoidCallback onClearHistory;
+  final ValueChanged<String> onPick;
+
+  const _SearchLanding({
+    required this.searches,
+    required this.onClearHistory,
+    required this.onPick,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      children: [
+        if (searches.isNotEmpty) ...[
+          Row(
+            children: [
+              const Text(
+                '搜索历史',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.ink,
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: onClearHistory,
+                child: const Text(
+                  '清空',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.coral,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final q in searches.take(20))
+                ActionChip(
+                  label: Text(q),
+                  backgroundColor: Colors.white,
+                  visualDensity: VisualDensity.compact,
+                  side: BorderSide(
+                    color: AppTheme.coral.withValues(alpha: 0.28),
+                  ),
+                  avatar: const Icon(
+                    Icons.history,
+                    size: 16,
+                    color: AppTheme.coral,
+                  ),
+                  onPressed: () => onPick(q),
+                ),
+            ],
+          ),
+          const SizedBox(height: 22),
+        ],
+        const Text(
+          '常用词',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: AppTheme.ink,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final term in kCommonSearchTerms)
+              ActionChip(
+                label: Text(term),
+                backgroundColor: Colors.white,
+                visualDensity: VisualDensity.compact,
+                side: BorderSide(
+                  color: AppTheme.purple.withValues(alpha: 0.22),
+                ),
+                avatar: const Icon(
+                  Icons.local_fire_department_rounded,
+                  size: 16,
+                  color: AppTheme.purple,
+                ),
+                onPressed: () => onPick(term),
+              ),
+          ],
+        ),
+        if (searches.isEmpty) ...[
+          const SizedBox(height: 28),
+          const Text(
+            '点选常用词，或直接输入菜名 / 原料搜索',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppTheme.muted,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

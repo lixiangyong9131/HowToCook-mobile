@@ -59,6 +59,49 @@ class CachedApk {
   File get file => File(path);
 }
 
+
+/// Snapshot of an Android DownloadManager job for APK updates.
+class DownloadJob {
+  final int downloadId;
+  final String status; // pending|running|paused|successful|failed|missing|…
+  final int bytesDownloaded;
+  final int totalSize;
+  final String? path;
+  final int? reason;
+  final String? tag;
+  final String? url;
+
+  const DownloadJob({
+    required this.downloadId,
+    required this.status,
+    required this.bytesDownloaded,
+    required this.totalSize,
+    this.path,
+    this.reason,
+    this.tag,
+    this.url,
+  });
+
+  double? get progress {
+    if (totalSize <= 0) return null;
+    return (bytesDownloaded / totalSize).clamp(0.0, 1.0);
+  }
+
+  bool get isTerminal =>
+      status == 'successful' || status == 'failed' || status == 'missing';
+
+  DownloadJob copyWith({String? tag, String? url}) => DownloadJob(
+        downloadId: downloadId,
+        status: status,
+        bytesDownloaded: bytesDownloaded,
+        totalSize: totalSize,
+        path: path,
+        reason: reason,
+        tag: tag ?? this.tag,
+        url: url ?? this.url,
+      );
+}
+
 class UpdateService {
   static const repoApi =
       'https://api.github.com/repos/lixiangyong9131/HowToCook-mobile/releases/latest';
@@ -70,6 +113,13 @@ class UpdateService {
   static const _prefTag = 'update_apk_tag';
   static const _prefUrl = 'update_apk_url';
   static const _prefBytes = 'update_apk_bytes';
+  static const _prefDlId = 'update_apk_download_id';
+
+  /// How to verify background download:
+  /// 1) 我的 → 检查更新 → 开始下载；
+  /// 2) 立刻按 Home / 切到其他 App（不要强制停止进程）；
+  /// 3) 通知栏可见系统下载进度，返回后「检查更新」可继续安装已下完的包。
+  /// Implementation: Android DownloadManager via installer MethodChannel.
 
   static Future<PackageInfo> currentInfo() => PackageInfo.fromPlatform();
 
@@ -335,6 +385,9 @@ class UpdateService {
   }
 
   /// Download APK if needed, then install. Reuses cache for same [tag]/[url].
+  ///
+  /// On Android uses system DownloadManager so the transfer continues after
+  /// the Activity pauses / process is backgrounded. UI may poll [queryDownload].
   static Future<String> downloadAndInstall(
     String apkUrl, {
     String? tag,
@@ -355,9 +408,201 @@ class UpdateService {
       }
     }
 
+    // Prefer system DownloadManager (survives background / process death).
+    try {
+      return await _downloadViaDownloadManager(
+        apkUrl,
+        tag: label,
+        onProgress: onProgress,
+        forceRedownload: forceRedownload,
+      );
+    } on MissingPluginException catch (e) {
+      debugPrint('DownloadManager channel missing, fallback http: $e');
+    } on PlatformException catch (e) {
+      debugPrint('DownloadManager failed, fallback http: $e');
+    }
+
+    return _downloadViaHttp(
+      apkUrl,
+      tag: label,
+      onProgress: onProgress,
+    );
+  }
+
+  /// Resume / observe an in-flight or finished system download (after process kill).
+  static Future<DownloadJob?> activeDownload() async {
+    if (kIsWeb || !Platform.isAndroid) return null;
+    try {
+      final meta = await _installerChannel
+          .invokeMethod<Map<dynamic, dynamic>>('activeApkDownload');
+      if (meta == null) return null;
+      final id = (meta['downloadId'] as num?)?.toInt() ?? -1;
+      if (id <= 0) {
+        final prefs = await SharedPreferences.getInstance();
+        final saved = int.tryParse(prefs.getString(_prefDlId) ?? '') ?? -1;
+        if (saved <= 0) return null;
+        return queryDownload(saved);
+      }
+      final tag = (meta['tag'] as String?) ?? '';
+      final url = (meta['url'] as String?) ?? '';
+      final job = await queryDownload(id);
+      if (job == null) {
+        return DownloadJob(
+          downloadId: id,
+          status: 'missing',
+          bytesDownloaded: 0,
+          totalSize: -1,
+          path: meta['path'] as String?,
+          tag: tag,
+          url: url,
+        );
+      }
+      return job.copyWith(tag: tag, url: url);
+    } catch (e) {
+      debugPrint('activeDownload: $e');
+      return null;
+    }
+  }
+
+  static Future<DownloadJob?> queryDownload(int downloadId) async {
+    if (downloadId <= 0) return null;
+    try {
+      final raw = await _installerChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'queryApkDownload',
+        {'downloadId': downloadId},
+      );
+      if (raw == null) return null;
+      return DownloadJob(
+        downloadId: downloadId,
+        status: (raw['status'] as String?) ?? 'unknown',
+        bytesDownloaded: (raw['bytesDownloaded'] as num?)?.toInt() ?? 0,
+        totalSize: (raw['totalSize'] as num?)?.toInt() ?? -1,
+        path: raw['path'] as String?,
+        reason: (raw['reason'] as num?)?.toInt(),
+      );
+    } catch (e) {
+      debugPrint('queryDownload: $e');
+      return null;
+    }
+  }
+
+  /// Finalize a successful DownloadManager job into cache + optional install.
+  static Future<String> finalizeDownloadJob(
+    DownloadJob job, {
+    required String apkUrl,
+    required String tag,
+    bool install = true,
+  }) async {
+    final path = job.path;
+    if (path == null || path.isEmpty) {
+      throw Exception('下载完成但找不到本地文件路径');
+    }
+    final file = File(path);
+    if (!await file.exists()) {
+      throw Exception('下载完成但文件不存在：$path');
+    }
+    final len = await file.length();
+    if (len < 5 * 1024 * 1024) {
+      throw Exception('下载的文件过小（$len 字节），可能不是完整 APK');
+    }
+    if (!await _looksLikeApk(file)) {
+      try {
+        await file.delete();
+      } catch (_) {}
+      throw Exception('下载内容不是有效 APK（文件头校验失败）');
+    }
+    await _persistCache(
+      path: file.absolute.path,
+      tag: tag,
+      url: apkUrl,
+      bytes: len,
+    );
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefDlId);
+    if (!install) return '已下载完成，可继续安装';
+    return _launchInstaller(file);
+  }
+
+  static Future<String> _downloadViaDownloadManager(
+    String apkUrl, {
+    required String tag,
+    void Function(double progress)? onProgress,
+    bool forceRedownload = false,
+  }) async {
+    final existing = await activeDownload();
+    var downloadId = existing?.downloadId ?? -1;
+    if (forceRedownload && downloadId > 0) {
+      try {
+        await _installerChannel.invokeMethod('removeApkDownload', {
+          'downloadId': downloadId,
+        });
+      } catch (_) {}
+      downloadId = -1;
+    }
+
+    final sameJob = existing != null &&
+        downloadId > 0 &&
+        (existing.url == apkUrl || existing.tag == tag) &&
+        existing.status != 'failed' &&
+        existing.status != 'missing';
+
+    if (!sameJob) {
+      final res = await _installerChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'enqueueApkDownload',
+        {'url': apkUrl, 'tag': tag},
+      );
+      downloadId = (res?['downloadId'] as num?)?.toInt() ?? -1;
+      if (downloadId <= 0) {
+        throw PlatformException(
+          code: 'enqueue_failed',
+          message: 'DownloadManager 未返回 downloadId',
+        );
+      }
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefDlId, '$downloadId');
+
+    const poll = Duration(milliseconds: 500);
+    const maxWait = Duration(minutes: 30);
+    final started = DateTime.now();
+    while (DateTime.now().difference(started) < maxWait) {
+      final job = await queryDownload(downloadId);
+      if (job == null) {
+        await Future<void>.delayed(poll);
+        continue;
+      }
+      if (job.totalSize > 0 && job.bytesDownloaded >= 0) {
+        onProgress?.call(
+          (job.bytesDownloaded / job.totalSize).clamp(0.0, 1.0),
+        );
+      } else if (job.status == 'successful') {
+        onProgress?.call(1);
+      }
+
+      if (job.status == 'successful') {
+        onProgress?.call(1);
+        return finalizeDownloadJob(job, apkUrl: apkUrl, tag: tag);
+      }
+      if (job.status == 'failed') {
+        await prefs.remove(_prefDlId);
+        throw Exception('系统下载失败（reason=${job.reason ?? "?"}）');
+      }
+      await Future<void>.delayed(poll);
+    }
+    throw Exception(
+      '下载超时（系统 DownloadManager 仍可能在后台继续，请稍后回「检查更新」）',
+    );
+  }
+
+  /// Foreground-only HTTP fallback if DownloadManager channel is unavailable.
+  static Future<String> _downloadViaHttp(
+    String apkUrl, {
+    required String tag,
+    void Function(double progress)? onProgress,
+  }) async {
     final dir = await _apkDir();
     final file = File(p.join(dir.path, 'how_to_cook_update.apk'));
-    // Only delete when we are about to replace with a fresh download.
     if (await file.exists()) {
       try {
         await file.delete();
@@ -412,10 +657,9 @@ class UpdateService {
       throw Exception('下载内容不是有效 APK（文件头校验失败），请稍后重试或到 GitHub 手动下载');
     }
 
-    // Persist until install succeeds or user clears — never delete on install fail.
     await _persistCache(
       path: file.absolute.path,
-      tag: label,
+      tag: tag,
       url: apkUrl,
       bytes: received,
     );

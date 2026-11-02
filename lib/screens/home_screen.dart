@@ -11,7 +11,7 @@ import '../widgets/stacked_category_cards.dart';
 import 'category_recipes_screen.dart';
 import 'search_screen.dart';
 
-/// Home = search → history chips → Wallet 分类叠卡 → 最近浏览.
+/// Home = search pill → Wallet 分类叠卡 → 最近浏览（搜索历史在 SearchScreen）.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
@@ -59,67 +59,8 @@ class HomeScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 18),
                         _SearchPill(
-                          onTap: () => _openSearch(context),
-                          onSubmit: (q) => _openSearch(context, initial: q),
+                          onOpen: () => _openSearch(context),
                         ),
-                        // Search history chips directly under search (quick re-query)
-                        if (history.searches.isNotEmpty) ...[
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              const Text(
-                                '搜索历史',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppTheme.muted,
-                                ),
-                              ),
-                              const Spacer(),
-                              GestureDetector(
-                                onTap: () => history.clearSearches(),
-                                child: const Text(
-                                  '清空',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppTheme.coral,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          // Single horizontal row · up to 20 · swipe to browse
-                          SizedBox(
-                            height: 40,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: history.searches.take(20).length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(width: 8),
-                              itemBuilder: (context, i) {
-                                final q = history.searches[i];
-                                return ActionChip(
-                                  label: Text(q),
-                                  backgroundColor: Colors.white,
-                                  visualDensity: VisualDensity.compact,
-                                  side: BorderSide(
-                                    color: AppTheme.coral
-                                        .withValues(alpha: 0.28),
-                                  ),
-                                  avatar: const Icon(
-                                    Icons.history,
-                                    size: 16,
-                                    color: AppTheme.coral,
-                                  ),
-                                  onPressed: () =>
-                                      _openSearch(context, initial: q),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
                         const SizedBox(height: 22),
                         // Wallet-style folded category stack on home
                         Builder(
@@ -211,91 +152,66 @@ class HomeScreen extends StatelessWidget {
 
 
 
-class _SearchPill extends StatefulWidget {
-  final VoidCallback onTap;
-  final ValueChanged<String>? onSubmit;
-  const _SearchPill({required this.onTap, this.onSubmit});
-
-  @override
-  State<_SearchPill> createState() => _SearchPillState();
-}
-
-class _SearchPillState extends State<_SearchPill> {
-  final _ctrl = TextEditingController();
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
+/// 首页搜索入口：点击 / 聚焦即进入独立搜索页（不在首页输入或展示历史）。
+class _SearchPill extends StatelessWidget {
+  final VoidCallback onOpen;
+  const _SearchPill({required this.onOpen});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(999),
-        boxShadow: AppTheme.softShadow(opacity: 0.10),
-        border: Border.all(color: AppTheme.coral.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: _ctrl,
-              textInputAction: TextInputAction.search,
-              onTap: () {
-                // Prefer dedicated search screen for full results UX
-              },
-              onSubmitted: (v) {
-                if (v.trim().isEmpty) {
-                  widget.onTap();
-                } else {
-                  widget.onSubmit?.call(v.trim());
-                }
-              },
-              decoration: const InputDecoration(
-                hintText: '搜索菜名或原料…',
-                hintStyle: TextStyle(
-                  color: AppTheme.muted,
-                  fontWeight: FontWeight.w500,
-                ),
-                border: InputBorder.none,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                prefixIcon: Icon(Icons.search_rounded, color: AppTheme.coral),
-              ),
-            ),
+        onTap: onOpen,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(999),
+            boxShadow: AppTheme.softShadow(opacity: 0.10),
+            border: Border.all(color: AppTheme.coral.withValues(alpha: 0.35)),
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Material(
-              color: AppTheme.coral,
-              borderRadius: BorderRadius.circular(999),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(999),
-                onTap: () {
-                  final q = _ctrl.text.trim();
-                  if (q.isEmpty) {
-                    widget.onTap();
-                  } else {
-                    widget.onSubmit?.call(q);
-                  }
-                },
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  child: Text(
-                    '搜索',
-                    style: TextStyle(
-                      color: AppTheme.cream,
-                      fontWeight: FontWeight.w900,
+          child: Row(
+            children: [
+              const Expanded(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: Row(
+                    children: [
+                      Icon(Icons.search_rounded, color: AppTheme.coral),
+                      SizedBox(width: 12),
+                      Text(
+                        '搜索菜名或原料…',
+                        style: TextStyle(
+                          color: AppTheme.muted,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Material(
+                  color: AppTheme.coral,
+                  borderRadius: BorderRadius.circular(999),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Text(
+                      '搜索',
+                      style: TextStyle(
+                        color: AppTheme.cream,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
