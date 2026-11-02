@@ -445,7 +445,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
         final displayedH = w / processAspect;
         final imgTop = (h - displayedH) / 2;
         final dishCenterY = imgTop + displayedH * dishCenterAlongImage;
-        const iconBox = 44.0; // padding + 28 icon
+        // Whole TV mark enlarged (not just the ▶); hole stays transparent.
+        const iconSize = 52.0;
+        const pad = 10.0;
+        const iconBox = iconSize + pad * 2;
 
         return Stack(
           children: [
@@ -461,9 +464,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                     onTap: _openVideo,
                     customBorder: const CircleBorder(),
                     child: const Padding(
-                      padding: EdgeInsets.all(8),
+                      padding: EdgeInsets.all(pad),
                       child: BiliTvIcon(
-                        size: 28,
+                        size: iconSize,
                         color: Colors.white,
                       ),
                     ),
@@ -873,7 +876,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                     IconButton(
                       tooltip: 'B 站视频做法',
                       onPressed: _openVideo,
-                      icon: const BiliTvIcon(size: 24, color: AppTheme.navy),
+                      icon: const BiliTvIcon(size: 30, color: Colors.white),
                     ),
                     _FavoriteActionButton(
                       recipeId: recipe.id,

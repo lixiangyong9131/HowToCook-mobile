@@ -9,6 +9,16 @@ class TipDetailScreen extends StatelessWidget {
   final KitchenTip tip;
   const TipDetailScreen({super.key, required this.tip});
 
+  static int detailCacheWidth(BuildContext context) {
+    return (MediaQuery.sizeOf(context).width *
+            MediaQuery.devicePixelRatioOf(context))
+        .round()
+        .clamp(400, 1600);
+  }
+
+  static ImageProvider detailProvider(String jpeg, int cacheWidth) =>
+      ResizeImage(AssetImage(jpeg), width: cacheWidth);
+
   @override
   Widget build(BuildContext context) {
     final jpeg = ProcessImageService.instance.tipAssetPath(tip.path);
@@ -51,6 +61,8 @@ class TipDetailScreen extends StatelessWidget {
       ),
     );
 
+    final cacheWidth = detailCacheWidth(context);
+
     return Scaffold(
       backgroundColor: AppTheme.bg,
       appBar: AppBar(
@@ -67,18 +79,16 @@ class TipDetailScreen extends StatelessWidget {
           if (jpeg != null)
             // Tip cards are ~9:16; never force a shorter AspectRatio + cover
             // (that cropped the bottom). fitWidth keeps the full frame.
+            // Same ResizeImage width as list precache → first frame is final.
             ClipRRect(
               borderRadius: BorderRadius.circular(18),
-              child: Image.asset(
-                jpeg,
+              child: Image(
+                image: detailProvider(jpeg, cacheWidth),
                 width: double.infinity,
                 fit: BoxFit.fitWidth,
                 alignment: Alignment.topCenter,
                 filterQuality: FilterQuality.medium,
-                cacheWidth: (MediaQuery.sizeOf(context).width *
-                        MediaQuery.devicePixelRatioOf(context))
-                    .round()
-                    .clamp(400, 1600),
+                gaplessPlayback: true,
               ),
             )
           else

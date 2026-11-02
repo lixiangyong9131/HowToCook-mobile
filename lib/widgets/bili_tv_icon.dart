@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// Bilibili-style mini TV: rounded body, twin antennas, centered ▶.
-/// Matches the in-app overlay mark (no face, no feet).
+/// Bilibili-style mini TV: rounded body, twin antennas, centered ▶ cutout.
+///
+/// Body fill + stroke use [color] (typically white). The play triangle is a
+/// transparent hole so the content behind shows through.
 class BiliTvIcon extends StatelessWidget {
   final double size;
   final Color color;
@@ -35,26 +37,38 @@ class _BiliTvPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
+    // Solid body fill (white when color is white) — not translucent.
     final bodyFill = Paint()
-      ..color = color.withValues(alpha: 0.38)
-      ..style = PaintingStyle.fill;
-
-    // Dark play mark on light/translucent body; same-hue fill when color is dark.
-    final playColor =
-        color.computeLuminance() > 0.55 ? const Color(0xFF2C2C2C) : color;
-    final playFill = Paint()
-      ..color = playColor
+      ..color = color
       ..style = PaintingStyle.fill;
 
     // Body sits a bit lower so antennas fit.
+    final bodyRect = Rect.fromLTWH(w * 0.14, h * 0.30, w * 0.72, h * 0.56);
     final body = RRect.fromRectAndRadius(
-      Rect.fromLTWH(w * 0.14, h * 0.30, w * 0.72, h * 0.56),
+      bodyRect,
       Radius.circular(w * 0.16),
     );
-    canvas.drawRRect(body, bodyFill);
+
+    // Play triangle hole (transparent) punched through the body.
+    final cx = w * 0.52;
+    final cy = h * 0.58;
+    final tw = w * 0.22;
+    final th = h * 0.22;
+    final tri = Path()
+      ..moveTo(cx - tw * 0.45, cy - th * 0.55)
+      ..lineTo(cx - tw * 0.45, cy + th * 0.55)
+      ..lineTo(cx + tw * 0.55, cy)
+      ..close();
+
+    final bodyWithHole = Path()
+      ..fillType = PathFillType.evenOdd
+      ..addRRect(body)
+      ..addPath(tri, Offset.zero);
+
+    canvas.drawPath(bodyWithHole, bodyFill);
     canvas.drawRRect(body, stroke);
 
-    // Twin stub antennas (short thick nubs angled outward) — image-2 style.
+    // Twin stub antennas.
     final antenna = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
@@ -70,18 +84,6 @@ class _BiliTvPainter extends CustomPainter {
       Offset(w * 0.78, h * 0.10),
       antenna,
     );
-
-    // Centered play triangle ▶
-    final cx = w * 0.52;
-    final cy = h * 0.58;
-    final tw = w * 0.22;
-    final th = h * 0.22;
-    final tri = Path()
-      ..moveTo(cx - tw * 0.45, cy - th * 0.55)
-      ..lineTo(cx - tw * 0.45, cy + th * 0.55)
-      ..lineTo(cx + tw * 0.55, cy)
-      ..close();
-    canvas.drawPath(tri, playFill);
   }
 
   @override

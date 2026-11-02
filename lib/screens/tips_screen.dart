@@ -48,26 +48,62 @@ class _TipsScreenState extends State<TipsScreen> {
     _precacheTipThumbs();
   }
 
+  int _detailCacheWidth(BuildContext context) {
+    return (MediaQuery.sizeOf(context).width *
+            MediaQuery.devicePixelRatioOf(context))
+        .round()
+        .clamp(400, 1600);
+  }
+
+  ImageProvider _tipThumbProvider(String asset, int cachePx) =>
+      ResizeImage(AssetImage(asset), width: cachePx);
+
+  ImageProvider _tipDetailProvider(String asset, int detailPx) =>
+      ResizeImage(AssetImage(asset), width: detailPx);
+
   void _precacheTipThumbs() {
     final tips = TipsRepository.instance.tips;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final cachePx = (64 * dpr).round().clamp(64, 256);
-    final config = createLocalImageConfiguration(
+    final detailPx = _detailCacheWidth(context);
+    final thumbConfig = createLocalImageConfiguration(
       context,
       size: Size(cachePx.toDouble(), cachePx.toDouble()),
     );
-    // Warm imageCache at thumb size; fire-and-forget so scroll stays smooth.
+    final detailConfig = createLocalImageConfiguration(
+      context,
+      size: Size(detailPx.toDouble(), detailPx.toDouble()),
+    );
+    // Warm thumbs + full-width detail decode so opening a tip is gapless.
     for (final tip in tips) {
       final jpeg = ProcessImageService.instance.tipAssetPath(tip.path);
       final asset = jpeg ?? ProcessImageService.tipPlaceholderAsset(tip.path);
-      final provider = ResizeImage(
-        AssetImage(asset),
-        width: cachePx,
-      );
-      provider.resolve(config).addListener(
+      _tipThumbProvider(asset, cachePx).resolve(thumbConfig).addListener(
         ImageStreamListener((_, __) {}, onError: (_, __) {}),
       );
+      if (jpeg != null) {
+        _tipDetailProvider(jpeg, detailPx).resolve(detailConfig).addListener(
+          ImageStreamListener((_, __) {}, onError: (_, __) {}),
+        );
+      }
     }
+  }
+
+  Future<void> _openTip(KitchenTip tip) async {
+    HapticFeedback.selectionClick();
+    final jpeg = ProcessImageService.instance.tipAssetPath(tip.path);
+    if (jpeg != null && mounted) {
+      final detailPx = _detailCacheWidth(context);
+      try {
+        await precacheImage(_tipDetailProvider(jpeg, detailPx), context);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TipDetailScreen(tip: tip),
+      ),
+    );
   }
 
   @override
@@ -144,14 +180,7 @@ class _TipsScreenState extends State<TipsScreen> {
                               accent: _groupColor(g.id),
                               icon: _groupIcon(g.id),
                               cachePx: cachePx,
-                              onTap: () {
-                                HapticFeedback.selectionClick();
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => TipDetailScreen(tip: tip),
-                                  ),
-                                );
-                              },
+                              onTap: () => _openTip(tip),
                             ),
                             const SizedBox(height: 10),
                           ],
@@ -313,7 +342,7 @@ class _TipCard extends StatelessWidget {
   }
 }
 
-/// Placeholder first, then fade in decoded thumb at fixed [cachePx].
+/// Instant thumb — no fade/placeholder flash; relies on list precache.
 class _TipThumb extends StatelessWidget {
   final String? jpeg;
   final String placeholder;
@@ -342,31 +371,20 @@ class _TipThumb extends StatelessWidget {
     // avoids accent letterbox gutters that looked like empty margins.
     return ColoredBox(
       color: accent,
-      child: FadeInImage(
-        placeholder: MemoryImage(_kTransparent1x1),
+      child: Image(
         image: ResizeImage(
           AssetImage(jpeg!),
           width: cachePx,
         ),
         fit: BoxFit.cover,
         alignment: Alignment.center,
-        fadeInDuration: const Duration(milliseconds: 180),
-        fadeOutDuration: const Duration(milliseconds: 80),
-        imageErrorBuilder: (_, __, ___) => fallback,
+        gaplessPlayback: true,
+        filterQuality: FilterQuality.low,
+        errorBuilder: (_, __, ___) => fallback,
       ),
     );
   }
 }
-
-/// 1×1 transparent PNG.
-final Uint8List _kTransparent1x1 = Uint8List.fromList(<int>[
-  0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
-  0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-  0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
-  0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-  0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
-  0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
-]);
 
 class _PlaceholderThumb extends StatelessWidget {
   final Color accent;
