@@ -59,6 +59,17 @@ class HistoryStore extends ChangeNotifier {
     await prefs.setStringList(_searchKey, _searches);
   }
 
+  Future<void> removeSearch(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return;
+    final before = _searches.length;
+    _searches.removeWhere((e) => e.toLowerCase() == q.toLowerCase());
+    if (_searches.length == before) return;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_searchKey, _searches);
+  }
+
   Future<void> clearSearches() async {
     _searches.clear();
     notifyListeners();
