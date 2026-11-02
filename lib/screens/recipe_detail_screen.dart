@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -287,19 +288,30 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   void _openVideo() {
     HapticFeedback.selectionClick();
     // Avoid gesture/route contention with an open immersive panel.
-    if (_panelOpenN.value) {
+    final wasOpen = _panelOpenN.value;
+    if (wasOpen) {
       _panelOpenN.value = false;
     }
     final dishName =
         _parsed.title.isNotEmpty ? _parsed.title : widget.recipe.title;
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
+    Future<void>(() async {
+      if (wasOpen) {
+        // Let the panel reverse animation release the route/gesture arena.
+        await Future<void>.delayed(const Duration(milliseconds: 280));
+      } else {
+        await Future<void>.delayed(Duration.zero);
+      }
       if (!mounted) return;
       try {
         await showVideoRecipesSheet(context, dishName: dishName);
       } catch (_) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('暂时无法打开视频，请稍后重试')),
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text('网络不稳定，暂时打不开视频'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
         );
       }
     });
@@ -535,25 +547,44 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                             ),
                           ),
                         ],
-                        // Calories / time sit tight under difficulty — no bili gap.
-                        if (_metaBlock(onDark: true, vertical: true)
-                            case final meta?) ...[
-                          const SizedBox(height: 6),
-                          meta,
-                        ],
-                        // White bili TV between meta chips and 文字描述/必备原料.
-                        const SizedBox(height: 8),
-                        Center(
-                          child: IconButton(
-                            tooltip: 'B 站视频做法',
-                            onPressed: _openVideo,
-                            icon: const BiliTvIcon(
-                              size: 26,
-                              color: Colors.white,
-                            ),
+                        // Meta chips + bili TV share one left column so the TV
+                        // sits centered under calories/time — not screen-centered.
+                        const SizedBox(height: 6),
+                        IntrinsicWidth(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_metaBlock(onDark: true, vertical: true)
+                                  case final meta?)
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: meta,
+                                ),
+                              // Compact TV under meta — keeps pills close to time.
+                              const SizedBox(height: 2),
+                              Tooltip(
+                                message: 'B 站视频做法',
+                                child: InkWell(
+                                  onTap: _openVideo,
+                                  customBorder: const CircleBorder(),
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 4,
+                                    ),
+                                    child: BiliTvIcon(
+                                      size: 26,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        // Pills sit just under the TV / time column.
+                        const SizedBox(height: 2),
                         ValueListenableBuilder<int?>(
                           valueListenable: _immersivePanelN,
                           builder: (context, panel, _) {
@@ -585,7 +616,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
           ),
           // Tap photo below chrome to dismiss. Leave title/meta/bili/pills tappable.
           Positioned(
-            top: topPad + 360,
+            top: topPad + 340,
             left: 0,
             right: 0,
             bottom: 0,
@@ -617,7 +648,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             right: 0,
             bottom: 0,
             // Stay below compact chrome (difficulty→meta→bili→pills).
-            top: topPad + 360,
+            top: topPad + 340,
             child: ValueListenableBuilder<int?>(
               valueListenable: _immersivePanelN,
               builder: (context, panel, _) {
@@ -1330,7 +1361,7 @@ class _ImmersiveTabPills extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         pill(0, '文字描述'),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         pill(1, '必备原料'),
       ],
     );
@@ -1362,8 +1393,13 @@ class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
   static const _dismiss = 0.18;
 
   late final AnimationController _ctrl;
-  double _heightFrac = _half;
+  /// Height fraction owned by a notifier so drag updates never fight the
+  /// open/close AnimationController listener / setState path.
+  final ValueNotifier<double> _heightFracN = ValueNotifier<double>(_half);
   bool _dragging = false;
+  int? _dragPointer;
+  double _lastDragY = 0;
+  VelocityTracker? _velocityTracker;
 
   @override
   void initState() {
@@ -1375,16 +1411,10 @@ class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
       value: widget.open ? 0 : 1,
     );
     _ctrl.addStatusListener(_onStatus);
-    _ctrl.addListener(_onAnimTick);
     if (widget.open) {
-      _heightFrac = _half;
+      _heightFracN.value = _half;
       _ctrl.forward();
     }
-  }
-
-  void _onAnimTick() {
-    if (_dragging) return;
-    if (mounted) setState(() {});
   }
 
   void _onStatus(AnimationStatus s) {
@@ -1398,7 +1428,7 @@ class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
     super.didUpdateWidget(oldWidget);
     if (widget.open != oldWidget.open) {
       if (widget.open) {
-        _heightFrac = _half;
+        _heightFracN.value = _half;
         _ctrl.forward(from: 0);
       } else {
         _ctrl.reverse();
@@ -1409,86 +1439,94 @@ class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
   @override
   void dispose() {
     _ctrl.removeStatusListener(_onStatus);
-    _ctrl.removeListener(_onAnimTick);
     _ctrl.dispose();
+    _heightFracN.dispose();
     super.dispose();
   }
 
-  double get _openT => _ctrl.value;
-
   double _visualFrac() {
-    if (_dragging) return _heightFrac;
-    // Closing: shrink with the controller; opening: grow to target frac.
-    if (_ctrl.status == AnimationStatus.reverse ||
-        (_ctrl.status == AnimationStatus.dismissed && !widget.open)) {
-      return _heightFrac * _openT;
-    }
-    return _heightFrac * _openT;
+    final heightFrac = _heightFracN.value;
+    if (_dragging) return heightFrac;
+    return heightFrac * _ctrl.value;
   }
 
-  void _onDragStart(DragStartDetails _) {
+  void _onPointerDown(PointerDownEvent e) {
     _dragging = true;
+    _dragPointer = e.pointer;
+    _lastDragY = e.position.dy;
+    _velocityTracker = VelocityTracker.withKind(e.kind);
+    _velocityTracker!.addPosition(e.timeStamp, e.position);
     _ctrl.stop();
     if (_ctrl.value < 1) {
       _ctrl.value = 1;
     }
   }
 
-  void _onDragUpdate(DragUpdateDetails d, double maxH) {
+  void _onPointerMove(PointerMoveEvent e, double maxH) {
+    if (!_dragging || e.pointer != _dragPointer) return;
+    _velocityTracker?.addPosition(e.timeStamp, e.position);
     if (maxH <= 0) return;
-    final deltaFrac = -d.delta.dy / maxH;
-    setState(() {
-      _heightFrac = (_heightFrac + deltaFrac).clamp(0.0, 1.0);
-    });
+    final dy = e.position.dy - _lastDragY;
+    _lastDragY = e.position.dy;
+    final next = (_heightFracN.value - dy / maxH).clamp(0.0, 1.0);
+    if (next != _heightFracN.value) {
+      _heightFracN.value = next;
+    }
   }
 
-  void _onDragEnd(DragEndDetails d) {
+  void _onPointerEnd(PointerEvent e) {
+    if (!_dragging || e.pointer != _dragPointer) return;
+    final v = _velocityTracker?.getVelocity().pixelsPerSecond.dy ?? 0;
     _dragging = false;
-    final v = d.primaryVelocity ?? 0;
+    _dragPointer = null;
+    _velocityTracker = null;
+    _snapAfterDrag(v);
+  }
+
+  void _snapAfterDrag(double velocityDy) {
+    final heightFrac = _heightFracN.value;
     // Fast fling down → close.
-    if (v > 900 || _heightFrac < _dismiss) {
+    if (velocityDy > 900 || heightFrac < _dismiss) {
       widget.onClose();
       return;
     }
-    // Snap to nearest of half / large (or keep free if mid and slow).
-    final candidates = <double>[_half, _large];
-    if (v < -700) {
-      // Fling up → prefer large.
-      setState(() => _heightFrac = _large);
+    if (velocityDy < -700) {
+      _heightFracN.value = _large;
       return;
     }
-    if (v > 700) {
-      setState(() => _heightFrac = _half);
+    if (velocityDy > 700) {
+      _heightFracN.value = _half;
       return;
     }
+    const candidates = <double>[_half, _large];
     var best = candidates.first;
-    var bestDist = (best - _heightFrac).abs();
+    var bestDist = (best - heightFrac).abs();
     for (final c in candidates) {
-      final dist = (c - _heightFrac).abs();
+      final dist = (c - heightFrac).abs();
       if (dist < bestDist) {
         best = c;
         bestDist = dist;
       }
     }
-    // Free height if close to neither snap and user paused mid-drag.
-    if (bestDist > 0.12) {
-      setState(() {}); // keep free _heightFrac
-      return;
-    }
-    setState(() => _heightFrac = best);
+    // Keep free height if the user paused between snap points.
+    if (bestDist > 0.12) return;
+    _heightFracN.value = best;
   }
 
-  Widget _handle(double maxH) {
-    return GestureDetector(
+  /// Full-width drag strip via [Listener] — skips the gesture arena so it
+  /// does not lose to the immersive [InteractiveViewer] pan/scale below.
+  Widget _dragStrip(double maxH) {
+    return Listener(
       behavior: HitTestBehavior.opaque,
-      onVerticalDragStart: _onDragStart,
-      onVerticalDragUpdate: (d) => _onDragUpdate(d, maxH),
-      onVerticalDragEnd: _onDragEnd,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 10),
-          Container(
+      onPointerDown: _onPointerDown,
+      onPointerMove: (e) => _onPointerMove(e, maxH),
+      onPointerUp: _onPointerEnd,
+      onPointerCancel: _onPointerEnd,
+      child: SizedBox(
+        width: double.infinity,
+        height: 36,
+        child: Center(
+          child: Container(
             width: 44,
             height: 5,
             decoration: BoxDecoration(
@@ -1496,8 +1534,7 @@ class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
               borderRadius: BorderRadius.circular(999),
             ),
           ),
-          const SizedBox(height: 4),
-        ],
+        ),
       ),
     );
   }
@@ -1507,59 +1544,59 @@ class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxH = constraints.maxHeight;
-        final frac = _visualFrac().clamp(0.0, 1.0);
-        final h = (maxH * frac).clamp(0.0, maxH);
-        final opacity = frac <= 0.02 ? 0.0 : (frac / 0.12).clamp(0.0, 1.0);
-        // Below chrome height, only paint the drag bar — avoids Expanded
-        // overflow yellow/black flash while the sheet is growing/shrinking.
-        final showBody = h >= 132;
+        return AnimatedBuilder(
+          animation: Listenable.merge([_ctrl, _heightFracN]),
+          builder: (context, _) {
+            final frac = _visualFrac().clamp(0.0, 1.0);
+            final h = (maxH * frac).clamp(0.0, maxH);
+            final opacity = frac <= 0.02 ? 0.0 : (frac / 0.12).clamp(0.0, 1.0);
+            // Below chrome height, only paint the drag bar — avoids Expanded
+            // overflow yellow/black flash while the sheet is growing/shrinking.
+            final showBody = h >= 132;
 
-        return Align(
-          alignment: Alignment.bottomCenter,
-          child: Opacity(
-            opacity: opacity,
-            child: SizedBox(
-              height: h,
-              width: double.infinity,
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
-                child: DecoratedBox(
-                  // Clean cream card — no BoxShadow / elevation (avoids dirty
-                  // rectangular grey blobs outside the rounded top corners).
-                  decoration: const BoxDecoration(
+            return Align(
+              alignment: Alignment.bottomCenter,
+              child: Opacity(
+                opacity: opacity,
+                child: SizedBox(
+                  height: h,
+                  width: double.infinity,
+                  child: Material(
                     color: AppTheme.bg,
-                    borderRadius: BorderRadius.vertical(
+                    elevation: 0,
+                    shadowColor: Colors.transparent,
+                    borderRadius: const BorderRadius.vertical(
                       top: Radius.circular(24),
                     ),
-                  ),
-                  child: showBody
-                      ? Column(
-                          children: [
-                            _handle(maxH),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: IconButton(
-                                tooltip: '关闭',
-                                onPressed: widget.onClose,
-                                icon: const Icon(
-                                  Icons.close_rounded,
-                                  color: AppTheme.muted,
+                    clipBehavior: Clip.antiAlias,
+                    child: showBody
+                        ? Column(
+                            children: [
+                              _dragStrip(maxH),
+                              // Close stays tappable; strip above owns vertical drag.
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: IconButton(
+                                  tooltip: '关闭',
+                                  onPressed: widget.onClose,
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                    color: AppTheme.muted,
+                                  ),
                                 ),
                               ),
-                            ),
-                            Expanded(child: widget.child),
-                          ],
-                        )
-                      : Align(
-                          alignment: Alignment.topCenter,
-                          child: _handle(maxH),
-                        ),
+                              Expanded(child: widget.child),
+                            ],
+                          )
+                        : Align(
+                            alignment: Alignment.topCenter,
+                            child: _dragStrip(maxH),
+                          ),
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );

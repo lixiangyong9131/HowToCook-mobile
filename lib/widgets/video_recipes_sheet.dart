@@ -14,7 +14,11 @@ Future<void> showVideoRecipesSheet(
   final name = dishName.trim();
   if (name.isEmpty) {
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(content: Text('暂无菜名，无法搜索视频')),
+      const SnackBar(
+        content: Text('暂无菜名，无法搜索视频'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ),
     );
     return;
   }
@@ -28,7 +32,11 @@ Future<void> showVideoRecipesSheet(
   } catch (_) {
     if (!context.mounted) return;
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(content: Text('暂时无法打开视频列表，请稍后重试')),
+      const SnackBar(
+        content: Text('网络不稳定，暂时打不开视频列表'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ),
     );
   }
 }
@@ -97,13 +105,21 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!ok && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('无法打开 B 站链接，请稍后重试')),
+          const SnackBar(
+            content: Text('暂时打不开 B 站链接'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
         );
       }
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('无法打开 B 站链接，请稍后重试')),
+        const SnackBar(
+          content: Text('暂时打不开 B 站链接'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
       );
     }
   }
@@ -225,7 +241,11 @@ class _VideoRecipesSheetState extends State<VideoRecipesSheet> {
               } catch (_) {
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('暂时无法播放，请稍后重试')),
+                  const SnackBar(
+                    content: Text('网络不稳定，暂时无法播放'),
+                    behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 2),
+                  ),
                 );
               }
             },

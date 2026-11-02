@@ -23,7 +23,11 @@ Future<void> showBiliVideoPlayer(
 }) async {
   if (video.bvid.trim().isEmpty && video.watchUrl.trim().isEmpty) {
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(content: Text('无效的视频链接')),
+      const SnackBar(
+        content: Text('这个视频链接不可用'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ),
     );
     return;
   }
@@ -36,7 +40,11 @@ Future<void> showBiliVideoPlayer(
   } catch (_) {
     if (!context.mounted) return;
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(content: Text('暂时无法播放，请稍后重试或到 B 站打开')),
+      const SnackBar(
+        content: Text('网络不稳定，暂时无法播放'),
+        behavior: SnackBarBehavior.floating,
+        duration: Duration(seconds: 2),
+      ),
     );
   }
 }
@@ -53,9 +61,13 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
   late final WebViewController _controller;
   bool _loading = true;
   String? _error;
+  /// Soft in-dialog tip only — never a flashing red framework toast.
+  String? _softTip;
   /// 0 = official embed, 1 = m.bilibili
   int _mode = 0;
   bool _alive = true;
+  Timer? _errorDebounce;
+  bool _triedMobileFallback = false;
 
   /// WebView owns all gestures — avoids nested-gesture deadlock with dialog
   /// when tapping danmaku / fullscreen controls inside the player.
@@ -129,14 +141,20 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
         NavigationDelegate(
           onPageStarted: (_) {
             if (!_alive || !mounted) return;
+            _cancelErrorDebounce();
             setState(() {
               _loading = true;
               _error = null;
+              _softTip = null;
             });
           },
           onPageFinished: (_) async {
             if (!_alive || !mounted) return;
-            setState(() => _loading = false);
+            _cancelErrorDebounce();
+            setState(() {
+              _loading = false;
+              _error = null;
+            });
             // No autoplay — pause if the page tries to start; user taps to play.
             if (_mode == 1) {
               await _runJsSafe(r'''(function(){
@@ -158,12 +176,12 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
             }
           },
           onWebResourceError: (err) {
+            // Subframe noise and cancelled redirects must never flash UI.
             if (err.isForMainFrame != true) return;
             if (!_alive || !mounted) return;
-            // Embed/m.bili often abort the first main-frame load during
-            // redirects; showing that as an error causes a one-frame flash.
             final desc = err.description.toLowerCase();
             final code = err.errorCode;
+            // Aborts/cancels during embed redirects are normal — ignore hard.
             if (code == -3 /* ERR_ABORTED */ ||
                 code == -999 /* NSURLErrorCancelled */ ||
                 desc.contains('abort') ||
@@ -172,12 +190,8 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
                 desc.contains('replaced')) {
               return;
             }
-            setState(() {
-              _loading = false;
-              _error = err.description.isNotEmpty
-                  ? err.description
-                  : '播放页加载失败';
-            });
+            // Real network failures: debounce, then silent mobile fallback.
+            _scheduleSoftFailure(networkish: true);
           },
           onHttpError: (err) {
             final code = err.response?.statusCode;
@@ -189,14 +203,12 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
               return;
             }
             if (!_alive || !mounted) return;
-            // Ignore transient risk-control / redirect codes that clear on
-            // the next navigation — prevents a red error flash.
-            if (code == 412 || code == 403 || code == 429) return;
+            // Risk-control / redirects: ignore completely (no flash).
+            if (code == 412 || code == 403 || code == 429 || code == 302) {
+              return;
+            }
             if (code >= 500 || code == 404) {
-              setState(() {
-                _loading = false;
-                _error = 'HTTP $code';
-              });
+              _scheduleSoftFailure(networkish: true);
             }
           },
           onNavigationRequest: (req) {
@@ -213,11 +225,51 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
       await _loadCurrent();
     } catch (_) {
       if (!_alive || !mounted) return;
-      setState(() {
-        _loading = false;
-        _error = '播放器初始化失败，请重试或到 B 站打开';
-      });
+      _showSoftFailure(message: '播放器暂时不可用，请重试或到 B 站打开');
     }
+  }
+
+  void _cancelErrorDebounce() {
+    _errorDebounce?.cancel();
+    _errorDebounce = null;
+  }
+
+  /// Debounced soft failure: prefer silent embed→mobile fallback; never flash
+  /// raw WebView descriptions or framework red errors.
+  void _scheduleSoftFailure({required bool networkish}) {
+    _cancelErrorDebounce();
+    _errorDebounce = Timer(const Duration(milliseconds: 700), () {
+      if (!_alive || !mounted) return;
+      // Still loading a subsequent navigation — keep waiting quietly.
+      if (_loading && _error == null) {
+        // Give the page one more beat; if still stuck, soft-fail below.
+      }
+      if (_mode == 0 && !_triedMobileFallback) {
+        _triedMobileFallback = true;
+        setState(() {
+          _mode = 1;
+          _error = null;
+          _softTip = null;
+          _loading = true;
+        });
+        unawaited(_loadCurrent());
+        return;
+      }
+      _showSoftFailure(
+        message: networkish
+            ? '网络不稳定，暂时无法播放'
+            : '暂时无法播放，请稍后重试',
+      );
+    });
+  }
+
+  void _showSoftFailure({required String message}) {
+    if (!_alive || !mounted) return;
+    setState(() {
+      _loading = false;
+      _error = message;
+      _softTip = message;
+    });
   }
 
   Future<void> _runJsSafe(String js) async {
@@ -229,18 +281,17 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
 
   Future<void> _loadCurrent() async {
     if (!_alive || !mounted) return;
+    _cancelErrorDebounce();
     setState(() {
       _loading = true;
       _error = null;
+      _softTip = null;
     });
     try {
       await _controller.loadRequest(_headersUri, headers: _headers);
     } catch (_) {
       if (!_alive || !mounted) return;
-      setState(() {
-        _loading = false;
-        _error = '播放页加载失败，请重试或到 B 站打开';
-      });
+      _scheduleSoftFailure(networkish: true);
     }
   }
 
@@ -259,6 +310,7 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
   @override
   void dispose() {
     _alive = false;
+    _cancelErrorDebounce();
     // Tear down safely: stop media via JS, clear delegate, blank page.
     // Do not await — dispose must be sync; fire-and-forget with guards.
     unawaited(() async {
@@ -282,7 +334,11 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('无法打开链接：${widget.video.watchUrl}')),
+        const SnackBar(
+          content: Text('暂时打不开 B 站链接'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
       );
     }
   }
@@ -353,18 +409,20 @@ class _BiliVideoPlayerDialogState extends State<BiliVideoPlayerDialog> {
                             const Icon(Icons.videocam_off_outlined,
                                 size: 40, color: AppTheme.muted),
                             const SizedBox(height: 12),
-                            const Text(
-                              '播放页加载失败',
-                              style: TextStyle(
+                            Text(
+                              _softTip ?? '暂时无法播放',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w800,
+                                color: AppTheme.ink,
                               ),
                             ),
                             const SizedBox(height: 8),
-                            Text(
-                              _error!,
+                            const Text(
+                              '可以重试，或到 B 站打开',
                               textAlign: TextAlign.center,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppTheme.muted,
                                 fontSize: 12,
                               ),
