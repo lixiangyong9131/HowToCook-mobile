@@ -35,21 +35,27 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   late final List<_DetailTab> _detailTabs;
   late final RecipeSection? _mergedIngredients;
   Timer? _timer;
+
   /// Isolated from setState so process image / header do not rebuild every tick.
   final ValueNotifier<Duration?> _remainingN = ValueNotifier<Duration?>(null);
   final ValueNotifier<Duration?> _totalN = ValueNotifier<Duration?>(null);
   final ValueNotifier<double> _favScaleN = ValueNotifier<double>(1);
   bool _hasProcessImage = false;
+
   /// Immersive side tabs: null = image only, 0 = 文字描述, 1 = 必备原料.
   /// ValueNotifier so toggling panels / 喜欢 chrome never setStates this
   /// screen (which used to recreate ProcessImageViewer loader → flicker).
   final ValueNotifier<int?> _immersivePanelN = ValueNotifier<int?>(null);
+
   /// Drives slide; kept true until exit animation finishes.
   final ValueNotifier<bool> _panelOpenN = ValueNotifier<bool>(false);
+
   /// Step indices whose timer finished → stamped 「计时已完成」.
   final Set<int> _timerDoneSteps = {};
+
   /// Which step the running timer belongs to (null = app-bar / free timer).
   int? _activeTimerStep;
+
   /// 份数：原料用量按「计算」基准 × 此值。
   int _servings = 1;
 
@@ -59,8 +65,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     _parsed = parseRecipeMarkdown(widget.recipe.markdown);
     _mergedIngredients = _buildMergedIngredients();
     // Index is loaded in main(); sync check so 做法大图 is first when available.
-    _hasProcessImage =
-        ProcessImageService.instance.hasImage(widget.recipe);
+    _hasProcessImage = ProcessImageService.instance.hasImage(widget.recipe);
     _detailTabs = _computeTabs();
     _tabs = TabController(length: _detailTabs.length, vsync: this);
     _tabs.addListener(() {
@@ -81,8 +86,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
       // Use maybeOf-style access after first frame; avoid depending on
       // HistoryScope during build so addBrowse notify does not rebuild
       // this detail (which previously tore down ProcessImageViewer).
-      final scope =
-          context.getInheritedWidgetOfExactType<HistoryScope>();
+      final scope = context.getInheritedWidgetOfExactType<HistoryScope>();
       scope?.notifier?.addBrowse(
         id: r.id,
         title: r.title,
@@ -180,34 +184,23 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   List<_DetailTab> _computeTabs() {
     final tabs = <_DetailTab>[];
     // 做法大图 always first (image viewer or empty placeholder).
-    tabs.add(const _DetailTab(
-      label: '做法大图',
-      kind: _TabKind.processImage,
-    ));
+    tabs.add(const _DetailTab(label: '做法大图', kind: _TabKind.processImage));
     // 文字步骤 right after 做法大图.
     final steps = _stepsSection;
     if (steps != null && steps.items.isNotEmpty) {
-      tabs.add(_DetailTab(
-        label: '文字步骤',
-        kind: _TabKind.steps,
-        section: steps,
-      ));
+      tabs.add(_DetailTab(label: '文字步骤', kind: _TabKind.steps, section: steps));
     }
     final ing = _mergedIngredients;
     if (ing != null) {
-      tabs.add(_DetailTab(
-        label: '必备原料和工具',
-        kind: _TabKind.ingredients,
-        section: ing,
-      ));
+      tabs.add(
+        _DetailTab(label: '必备原料和工具', kind: _TabKind.ingredients, section: ing),
+      );
     }
     final extra = _extraSection;
     if (extra != null && _extrasParts(extra).isNotEmpty) {
-      tabs.add(_DetailTab(
-        label: '附加内容',
-        kind: _TabKind.extras,
-        section: extra,
-      ));
+      tabs.add(
+        _DetailTab(label: '附加内容', kind: _TabKind.extras, section: extra),
+      );
     }
     return tabs;
   }
@@ -259,11 +252,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             setState(() => _timerDoneSteps.add(step));
           }
         }
-        final msg =
-            step != null ? '⏰ 第 ${step + 1} 步计时完成' : '⏰ 计时结束！';
-        unawaited(
-          TimerAlarmService.instance.ringUntilDismissed(message: msg),
-        );
+        final msg = step != null ? '⏰ 第 ${step + 1} 步计时完成' : '⏰ 计时结束！';
+        unawaited(TimerAlarmService.instance.ringUntilDismissed(message: msg));
       } else {
         _remainingN.value = rem - const Duration(seconds: 1);
       }
@@ -307,7 +297,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     return '${d.inMinutes} 分钟';
   }
 
-  Widget? _metaBlock({required bool onDark, bool vertical = false}) {
+  List<Widget> _metaChipList({required bool onDark}) {
     final fg = onDark
         ? Colors.white.withValues(alpha: 0.9)
         : AppTheme.ink.withValues(alpha: 0.85);
@@ -316,21 +306,30 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
         : Colors.white.withValues(alpha: 0.7);
     final chips = <Widget>[];
     if (_parsed.calories != null) {
-      chips.add(_MetaChip(
-        icon: Icons.local_fire_department_outlined,
-        label: '${_parsed.calories} 大卡',
-        fg: fg,
-        bg: bg,
-      ));
+      chips.add(
+        _MetaChip(
+          icon: Icons.local_fire_department_outlined,
+          label: '${_parsed.calories} 大卡',
+          fg: fg,
+          bg: bg,
+        ),
+      );
     }
     if (_parsed.cookTime != null) {
-      chips.add(_MetaChip(
-        icon: Icons.schedule_rounded,
-        label: _formatCookTime(_parsed.cookTime!),
-        fg: fg,
-        bg: bg,
-      ));
+      chips.add(
+        _MetaChip(
+          icon: Icons.schedule_rounded,
+          label: _formatCookTime(_parsed.cookTime!),
+          fg: fg,
+          bg: bg,
+        ),
+      );
     }
+    return chips;
+  }
+
+  Widget? _metaBlock({required bool onDark, bool vertical = false}) {
+    final chips = _metaChipList(onDark: onDark);
     if (chips.isEmpty) return null;
     if (vertical) {
       return Column(
@@ -359,10 +358,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
     return _buildClassicDetail(recipe, color);
   }
 
-  Widget _buildImmersiveProcessDetail(
-    Recipe recipe,
-    Color color,
-  ) {
+  Widget _buildImmersiveProcessDetail(Recipe recipe, Color color) {
     final topPad = MediaQuery.paddingOf(context).top;
     return Scaffold(
       backgroundColor: AppTheme.bg,
@@ -416,15 +412,12 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                       IconButton(
                         tooltip: '返回',
                         onPressed: () => Navigator.of(context).maybePop(),
-                        icon: const Icon(Icons.arrow_back_rounded,
-                            color: Colors.white),
+                        icon: const Icon(
+                          Icons.arrow_back_rounded,
+                          color: Colors.white,
+                        ),
                       ),
                       const Spacer(),
-                      IconButton(
-                        tooltip: 'B 站视频做法',
-                        onPressed: _openVideo,
-                        icon: const BiliTvIcon(size: 24, color: Colors.white),
-                      ),
                       _FavoriteActionButton(
                         recipeId: recipe.id,
                         scaleListenable: _favScaleN,
@@ -434,13 +427,15 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                       IconButton(
                         tooltip: '计时',
                         onPressed: () => _openTimerPicker(),
-                        icon: const Icon(Icons.timer_outlined,
-                            color: Colors.white),
+                        icon: const Icon(
+                          Icons.timer_outlined,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 118, 8),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -511,11 +506,39 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                             ),
                           ),
                         ],
-                        if (_metaBlock(onDark: true, vertical: true)
-                            case final meta?) ...[
-                          const SizedBox(height: 8),
-                          meta,
-                        ],
+                        const SizedBox(height: 10),
+                        Center(
+                          child: Material(
+                            color: AppTheme.coral,
+                            shape: const CircleBorder(),
+                            elevation: 2,
+                            child: IconButton(
+                              tooltip: 'B 站视频做法',
+                              onPressed: _openVideo,
+                              icon: const BiliTvIcon(
+                                size: 26,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        _ImmersiveActionRow(
+                          panelListenable: _immersivePanelN,
+                          openListenable: _panelOpenN,
+                          onSelect: (i) {
+                            HapticFeedback.selectionClick();
+                            final open = _panelOpenN.value;
+                            final panel = _immersivePanelN.value;
+                            if (panel == i && open) {
+                              _panelOpenN.value = false;
+                            } else {
+                              _immersivePanelN.value = i;
+                              _panelOpenN.value = true;
+                            }
+                          },
+                          metaChips: _metaChipList(onDark: true),
+                        ),
                       ],
                     ),
                   ),
@@ -523,8 +546,13 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               ),
             ),
           ),
-          // Tap outside open panel → dismiss (do not treat as process-image gesture).
-          Positioned.fill(
+          // Tap the photo below the meta row to dismiss. Leave the title,
+          // centered play button, and action row uncovered so they stay tappable.
+          Positioned(
+            top: topPad + 308,
+            left: 0,
+            right: 0,
+            bottom: 0,
             child: ValueListenableBuilder<int?>(
               valueListenable: _immersivePanelN,
               builder: (context, panel, _) {
@@ -552,7 +580,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             left: 0,
             right: 0,
             bottom: 0,
-            top: MediaQuery.sizeOf(context).height * 0.32,
+            // Stay below the title, centered play button, and meta row.
+            top: topPad + 308,
             child: ValueListenableBuilder<int?>(
               valueListenable: _immersivePanelN,
               builder: (context, panel, _) {
@@ -573,33 +602,6 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                       child: panel == 0
                           ? _buildDescPanel()
                           : _buildIngredientsPanel(),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          // Side pills stay above barrier + panel so they remain tappable.
-          Positioned(
-            top: topPad + 52,
-            right: 12,
-            child: ValueListenableBuilder<int?>(
-              valueListenable: _immersivePanelN,
-              builder: (context, panel, _) {
-                return ValueListenableBuilder<bool>(
-                  valueListenable: _panelOpenN,
-                  builder: (context, open, _) {
-                    return _ImmersiveTabPills(
-                      selected: open ? panel : null,
-                      onSelect: (i) {
-                        HapticFeedback.selectionClick();
-                        if (panel == i && open) {
-                          _panelOpenN.value = false; // animate closed
-                        } else {
-                          _immersivePanelN.value = i;
-                          _panelOpenN.value = true;
-                        }
-                      },
                     );
                   },
                 );
@@ -712,10 +714,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
         if (intro.isEmpty && (steps == null || steps.items.isEmpty))
           const Padding(
             padding: EdgeInsets.only(top: 24),
-            child: Text(
-              '暂无文字描述',
-              style: TextStyle(color: AppTheme.muted),
-            ),
+            child: Text('暂无文字描述', style: TextStyle(color: AppTheme.muted)),
           ),
         if (_extraSection case final extra?) ...[
           const SizedBox(height: 18),
@@ -758,10 +757,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                   expandedHeight: 248,
                   actions: [
                     IconButton(
-                        tooltip: 'B 站视频做法',
-                        onPressed: _openVideo,
-                        icon: const BiliTvIcon(size: 24, color: AppTheme.navy),
-                      ),
+                      tooltip: 'B 站视频做法',
+                      onPressed: _openVideo,
+                      icon: const BiliTvIcon(size: 24, color: AppTheme.navy),
+                    ),
                     _FavoriteActionButton(
                       recipeId: recipe.id,
                       scaleListenable: _favScaleN,
@@ -833,8 +832,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                                   Text(
                                     '难度 ${'★' * _parsed.difficulty!}${'☆' * (5 - _parsed.difficulty!)}',
                                     style: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.85),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.85,
+                                      ),
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -898,9 +898,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                         fontWeight: FontWeight.w800,
                         fontSize: 15,
                       ),
-                      tabs: [
-                        for (final t in _detailTabs) Tab(text: t.label),
-                      ],
+                      tabs: [for (final t in _detailTabs) Tab(text: t.label)],
                     ),
                   ),
                 ),
@@ -908,9 +906,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             },
             body: TabBarView(
               controller: _tabs,
-              children: [
-                for (final t in _detailTabs) _buildTabBody(t),
-              ],
+              children: [for (final t in _detailTabs) _buildTabBody(t)],
             ),
           ),
           ValueListenableBuilder<Duration?>(
@@ -942,8 +938,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.image_not_supported_outlined,
-                    size: 48, color: AppTheme.muted),
+                Icon(
+                  Icons.image_not_supported_outlined,
+                  size: 48,
+                  color: AppTheme.muted,
+                ),
                 SizedBox(height: 12),
                 Text(
                   '暂无做法大图',
@@ -1004,8 +1003,11 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.image_not_supported_outlined,
-                  size: 48, color: AppTheme.muted),
+              Icon(
+                Icons.image_not_supported_outlined,
+                size: 48,
+                color: AppTheme.muted,
+              ),
               SizedBox(height: 12),
               Text(
                 '暂无步骤',
@@ -1033,11 +1035,7 @@ class _DetailTab {
   final String label;
   final _TabKind kind;
   final RecipeSection? section;
-  const _DetailTab({
-    required this.label,
-    required this.kind,
-    this.section,
-  });
+  const _DetailTab({required this.label, required this.kind, this.section});
 }
 
 class _SectionBody extends StatelessWidget {
@@ -1070,7 +1068,8 @@ class _SectionBody extends StatelessWidget {
         steps: section.items,
         durationOf: extractStepDuration,
         timerCompletedSteps: timerCompletedSteps,
-        onStartTimer: onStartStepTimer ??
+        onStartTimer:
+            onStartStepTimer ??
             (i, d) {
               onPickTimer(d, i);
             },
@@ -1082,10 +1081,7 @@ class _SectionBody extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
         children: [
           if (onServingsChanged != null) ...[
-            _ServingsStepper(
-              servings: servings,
-              onChanged: onServingsChanged!,
-            ),
+            _ServingsStepper(servings: servings, onChanged: onServingsChanged!),
             const SizedBox(height: 12),
           ],
           LinkedChecklist(
@@ -1205,13 +1201,13 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
     return Material(
       color: AppTheme.bg,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: tabBar,
-      ),
+      child: Padding(padding: const EdgeInsets.only(top: 4), child: tabBar),
     );
   }
 
@@ -1219,7 +1215,6 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(covariant _TabBarDelegate oldDelegate) =>
       tabBar != oldDelegate.tabBar;
 }
-
 
 class _MetaChip extends StatelessWidget {
   final IconData icon;
@@ -1265,46 +1260,81 @@ class _ImmersiveTabPills extends StatelessWidget {
   final int? selected;
   final ValueChanged<int> onSelect;
 
-  const _ImmersiveTabPills({
-    required this.selected,
-    required this.onSelect,
-  });
+  const _ImmersiveTabPills({required this.selected, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
     Widget pill(int index, String label) {
       final on = selected == index;
-      return GestureDetector(
-        onTap: () => onSelect(index),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: on ? Colors.white : Colors.black.withValues(alpha: 0.45),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: on ? 0 : 0.25),
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: on ? AppTheme.ink : Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: 12,
+      return Material(
+        color: on ? AppTheme.navy : AppTheme.coral,
+        borderRadius: BorderRadius.circular(999),
+        elevation: on ? 3 : 2,
+        child: InkWell(
+          onTap: () => onSelect(index),
+          borderRadius: BorderRadius.circular(999),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: on ? AppTheme.neon : Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
             ),
           ),
         ),
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        pill(0, '文字描述'),
-        const SizedBox(height: 8),
-        pill(1, '必备原料'),
-      ],
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [pill(0, '文字描述'), const SizedBox(width: 8), pill(1, '必备原料')],
+    );
+  }
+}
+
+class _ImmersiveActionRow extends StatelessWidget {
+  final ValueNotifier<int?> panelListenable;
+  final ValueNotifier<bool> openListenable;
+  final ValueChanged<int> onSelect;
+  final List<Widget> metaChips;
+
+  const _ImmersiveActionRow({
+    required this.panelListenable,
+    required this.openListenable,
+    required this.onSelect,
+    required this.metaChips,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int?>(
+      valueListenable: panelListenable,
+      builder: (context, panel, _) {
+        return ValueListenableBuilder<bool>(
+          valueListenable: openListenable,
+          builder: (context, open, _) {
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _ImmersiveTabPills(
+                    selected: open ? panel : null,
+                    onSelect: onSelect,
+                  ),
+                  for (final chip in metaChips) ...[
+                    const SizedBox(width: 8),
+                    chip,
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -1432,7 +1462,6 @@ class _ImmersiveContentPanelState extends State<_ImmersiveContentPanel>
   }
 }
 
-
 /// Owns [FavoritesScope] subscription so parent detail does not rebuild
 /// (and flicker) the process-image layer when 喜欢 is toggled.
 class _FavoriteActionButton extends StatelessWidget {
@@ -1514,7 +1543,6 @@ class _PinnedProcessImageState extends State<_PinnedProcessImage>
     return _viewer;
   }
 }
-
 
 class _ServingsStepper extends StatelessWidget {
   final int servings;
@@ -1641,9 +1669,7 @@ class _ExtrasFold extends StatelessWidget {
           '附加内容',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
         ),
-        children: [
-          _ExtrasContent(parts: parts, fontSize: 14),
-        ],
+        children: [_ExtrasContent(parts: parts, fontSize: 14)],
       ),
     );
   }
@@ -1783,7 +1809,9 @@ String _stripHowtoCookContributionBoilerplate(String text) {
   for (final line in lines) {
     final t = line.trim();
     // Whole-line / bullet contribution CTA from upstream recipes.
-    if (_isHowtoCookContributionLine(t.replaceFirst(RegExp(r'^[-*+]\s+'), ''))) {
+    if (_isHowtoCookContributionLine(
+      t.replaceFirst(RegExp(r'^[-*+]\s+'), ''),
+    )) {
       continue;
     }
     if (_isHowtoCookContributionLine(t)) continue;
