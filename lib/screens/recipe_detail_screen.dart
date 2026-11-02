@@ -50,6 +50,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   /// Drives slide; kept true until exit animation finishes.
   final ValueNotifier<bool> _panelOpenN = ValueNotifier<bool>(false);
 
+  /// Immersive process image — chrome button opens fullscreen via this key.
+  final GlobalKey<ProcessImageViewerState> _processViewerKey =
+      GlobalKey<ProcessImageViewerState>();
+
   /// Step indices whose timer finished → stamped 「计时已完成」.
   final Set<int> _timerDoneSteps = {};
 
@@ -372,6 +376,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               child: _PinnedProcessImage(
                 key: ValueKey('process-pinned-${recipe.id}'),
                 recipe: recipe,
+                viewerKey: _processViewerKey,
               ),
             ),
           ),
@@ -418,6 +423,17 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                         ),
                       ),
                       const Spacer(),
+                      IconButton(
+                        tooltip: '查看大图',
+                        onPressed: () {
+                          HapticFeedback.selectionClick();
+                          _processViewerKey.currentState?.openFullscreen();
+                        },
+                        icon: const Icon(
+                          Icons.zoom_out_map_rounded,
+                          color: Colors.white,
+                        ),
+                      ),
                       _FavoriteActionButton(
                         recipeId: recipe.id,
                         scaleListenable: _favScaleN,
@@ -508,36 +524,42 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                         ],
                         const SizedBox(height: 10),
                         Center(
-                          child: Material(
-                            color: AppTheme.coral,
-                            shape: const CircleBorder(),
-                            elevation: 2,
-                            child: IconButton(
-                              tooltip: 'B 站视频做法',
-                              onPressed: _openVideo,
-                              icon: const BiliTvIcon(
-                                size: 26,
-                                color: Colors.white,
-                              ),
+                          child: IconButton(
+                            tooltip: 'B 站视频做法',
+                            onPressed: _openVideo,
+                            icon: const BiliTvIcon(
+                              size: 26,
+                              color: Colors.white,
                             ),
                           ),
                         ),
+                        if (_metaBlock(onDark: true, vertical: true)
+                            case final meta?) ...[
+                          const SizedBox(height: 8),
+                          meta,
+                        ],
                         const SizedBox(height: 8),
-                        _ImmersiveActionRow(
-                          panelListenable: _immersivePanelN,
-                          openListenable: _panelOpenN,
-                          onSelect: (i) {
-                            HapticFeedback.selectionClick();
-                            final open = _panelOpenN.value;
-                            final panel = _immersivePanelN.value;
-                            if (panel == i && open) {
-                              _panelOpenN.value = false;
-                            } else {
-                              _immersivePanelN.value = i;
-                              _panelOpenN.value = true;
-                            }
+                        ValueListenableBuilder<int?>(
+                          valueListenable: _immersivePanelN,
+                          builder: (context, panel, _) {
+                            return ValueListenableBuilder<bool>(
+                              valueListenable: _panelOpenN,
+                              builder: (context, open, _) {
+                                return _ImmersiveTabPills(
+                                  selected: open ? panel : null,
+                                  onSelect: (i) {
+                                    HapticFeedback.selectionClick();
+                                    if (panel == i && open) {
+                                      _panelOpenN.value = false;
+                                    } else {
+                                      _immersivePanelN.value = i;
+                                      _panelOpenN.value = true;
+                                    }
+                                  },
+                                );
+                              },
+                            );
                           },
-                          metaChips: _metaChipList(onDark: true),
                         ),
                       ],
                     ),
@@ -546,10 +568,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               ),
             ),
           ),
-          // Tap the photo below the meta row to dismiss. Leave the title,
-          // centered play button, and action row uncovered so they stay tappable.
+          // Tap the photo below the vertical meta/actions to dismiss. Leave the
+          // title, bili icon, meta, and pills uncovered so they stay tappable.
           Positioned(
-            top: topPad + 308,
+            top: topPad + 420,
             left: 0,
             right: 0,
             bottom: 0,
@@ -580,8 +602,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
             left: 0,
             right: 0,
             bottom: 0,
-            // Stay below the title, centered play button, and meta row.
-            top: topPad + 308,
+            // Stay below the title, bili icon, vertical meta, and pills.
+            top: topPad + 420,
             child: ValueListenableBuilder<int?>(
               valueListenable: _immersivePanelN,
               builder: (context, panel, _) {
@@ -1289,52 +1311,14 @@ class _ImmersiveTabPills extends StatelessWidget {
       );
     }
 
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
-      children: [pill(0, '文字描述'), const SizedBox(width: 8), pill(1, '必备原料')],
-    );
-  }
-}
-
-class _ImmersiveActionRow extends StatelessWidget {
-  final ValueNotifier<int?> panelListenable;
-  final ValueNotifier<bool> openListenable;
-  final ValueChanged<int> onSelect;
-  final List<Widget> metaChips;
-
-  const _ImmersiveActionRow({
-    required this.panelListenable,
-    required this.openListenable,
-    required this.onSelect,
-    required this.metaChips,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<int?>(
-      valueListenable: panelListenable,
-      builder: (context, panel, _) {
-        return ValueListenableBuilder<bool>(
-          valueListenable: openListenable,
-          builder: (context, open, _) {
-            return SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _ImmersiveTabPills(
-                    selected: open ? panel : null,
-                    onSelect: onSelect,
-                  ),
-                  for (final chip in metaChips) ...[
-                    const SizedBox(width: 8),
-                    chip,
-                  ],
-                ],
-              ),
-            );
-          },
-        );
-      },
+      children: [
+        pill(0, '文字描述'),
+        const SizedBox(height: 8),
+        pill(1, '必备原料'),
+      ],
     );
   }
 }
@@ -1505,8 +1489,13 @@ class _FavoriteActionButton extends StatelessWidget {
 /// Keeps [ProcessImageViewer] state stable across parent chrome rebuilds.
 class _PinnedProcessImage extends StatefulWidget {
   final Recipe recipe;
+  final GlobalKey<ProcessImageViewerState> viewerKey;
 
-  const _PinnedProcessImage({super.key, required this.recipe});
+  const _PinnedProcessImage({
+    super.key,
+    required this.recipe,
+    required this.viewerKey,
+  });
 
   @override
   State<_PinnedProcessImage> createState() => _PinnedProcessImageState();
@@ -1530,7 +1519,7 @@ class _PinnedProcessImageState extends State<_PinnedProcessImage>
     _loader = () => ProcessImageService.instance.loadFor(recipe);
     _remoteUrl = ProcessImageService.instance.remoteUrlFor(recipe);
     _viewer = ProcessImageViewer(
-      key: ValueKey('process-immersive-${recipe.id}'),
+      key: widget.viewerKey,
       immersive: true,
       loader: _loader,
       remoteUrl: _remoteUrl,

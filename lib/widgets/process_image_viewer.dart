@@ -9,7 +9,8 @@ import '../theme/app_theme.dart';
 
 /// Zoomable full-process recipe card (9:16 AI infographic).
 ///
-/// Tap immediately maximizes; committed 上滑 shares the same route.
+/// Non-immersive: tap immediately maximizes; committed 上滑 shares the same route.
+/// Immersive: gesture maximize is off — use [ProcessImageViewerState.openFullscreen].
 /// Fullscreen: tap anywhere (near identity) dismisses / restores.
 class ProcessImageViewer extends StatefulWidget {
   final Future<ProcessImageBytes?> Function() loader;
@@ -27,10 +28,10 @@ class ProcessImageViewer extends StatefulWidget {
   });
 
   @override
-  State<ProcessImageViewer> createState() => _ProcessImageViewerState();
+  ProcessImageViewerState createState() => ProcessImageViewerState();
 }
 
-class _ProcessImageViewerState extends State<ProcessImageViewer> {
+class ProcessImageViewerState extends State<ProcessImageViewer> {
   late Future<ProcessImageBytes?> _future;
   final _transform = TransformationController();
   bool _routeOpen = false;
@@ -38,6 +39,15 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
   /// Stable across parent rebuilds — avoids MemoryImage identity churn / flash.
   Widget? _cachedImage;
   Object? _cachedToken;
+  /// Latest child that can be opened in the fullscreen route.
+  Widget? _maximizeChild;
+
+  /// Opens the same fullscreen viewer previously triggered by tap / swipe-up.
+  Future<void> openFullscreen() async {
+    final child = _maximizeChild ?? _cachedImage;
+    if (child == null) return;
+    await _maximize(child);
+  }
 
   bool get _isNearIdentity {
     final scale = _transform.value.getMaxScaleOnAxis();
@@ -177,7 +187,10 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
                 transform: _transform,
                 onRetry: _retry,
                 onFallbackSteps: widget.onFallbackSteps,
-                onMaximize: _maximize,
+                onMaximize: (child) {
+                  _maximizeChild = child;
+                  return _maximize(child);
+                },
                 immersive: widget.immersive,
               );
             }
@@ -223,6 +236,7 @@ class _ProcessImageViewerState extends State<ProcessImageViewer> {
             _cachedImage = img;
             _cachedToken = token;
           }
+          _maximizeChild = img;
           return _ZoomableImage(
             transform: _transform,
             onMaximize: () => _maximize(img),
@@ -336,6 +350,8 @@ class _ZoomableImageState extends State<_ZoomableImage> {
   }
 
   void _fireMaximize() {
+    // Immersive detail opens fullscreen only via the chrome "查看大图" button.
+    if (widget.immersive) return;
     if (!_isNearIdentity(widget.transform.value)) return;
     widget.onMaximize();
   }
