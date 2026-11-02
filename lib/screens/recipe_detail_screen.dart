@@ -375,9 +375,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
   }
 
 
-  /// Mid-screen immersive chrome: [calories] [TV] on one row, time under
-  /// calories, then 文字描述 / 必备原料 pills. White TV, no coral plate.
-  Widget _buildImmersiveMidChrome() {
+  /// Left-top meta column under difficulty: calories → time → 文字描述 → 必备原料.
+  /// Vertical only; bili TV is a separate centered overlay, not part of this column.
+  Widget _buildImmersiveMetaColumn() {
     final chips = _metaChipList(onDark: true);
     Widget? calorie;
     Widget? time;
@@ -390,46 +390,19 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
       time = chips.first;
     }
 
-    final tv = Tooltip(
-      message: 'B 站视频做法',
-      child: InkWell(
-        onTap: _openVideo,
-        customBorder: const CircleBorder(),
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          child: BiliTvIcon(
-            size: 28,
-            color: Colors.white,
-          ),
-        ),
-      ),
-    );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (calorie != null) ...[
-              calorie,
-              const SizedBox(width: 10),
-            ],
-            // If no calorie chip, keep TV on the first meta row with time.
-            if (calorie == null && time != null) ...[
-              time,
-              const SizedBox(width: 10),
-            ],
-            tv,
-          ],
-        ),
-        if (calorie != null && time != null) ...[
+        if (calorie != null) ...[
+          const SizedBox(height: 6),
+          calorie,
+        ],
+        if (time != null) ...[
           const SizedBox(height: 6),
           time,
         ],
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         ValueListenableBuilder<int?>(
           valueListenable: _immersivePanelN,
           builder: (context, panel, _) {
@@ -453,6 +426,27 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
           },
         ),
       ],
+    );
+  }
+
+  /// Bili TV alone at the geometric center of the process-image layer.
+  /// White icon, no tinted circle plate; not part of the left meta column.
+  Widget _buildImmersiveCenteredBiliTv() {
+    return Center(
+      child: Tooltip(
+        message: 'B 站视频做法',
+        child: InkWell(
+          onTap: _openVideo,
+          customBorder: const CircleBorder(),
+          child: const Padding(
+            padding: EdgeInsets.all(8),
+            child: BiliTvIcon(
+              size: 28,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -629,6 +623,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
                             ),
                           ),
                         ],
+                        // 难度正下方竖列：卡路里 → 时间 → 文字描述 → 必备原料
+                        _buildImmersiveMetaColumn(),
                       ],
                     ),
                   ),
@@ -636,7 +632,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               ),
             ),
           ),
-          // Dim photo when panel open. Mid meta/TV/pills sit above this layer.
+          // Dim photo when panel open. Left meta + centered TV sit above this.
           Positioned(
             top: topPad + 140,
             left: 0,
@@ -664,12 +660,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen>
               },
             ),
           ),
-          // Calories | TV same row; vertical ~screen center (not stuck under title).
-          Positioned(
-            left: 16,
-            right: 16,
-            top: MediaQuery.sizeOf(context).height * 0.46,
-            child: _buildImmersiveMidChrome(),
+          // Bili TV alone — geometric center of the process-image layer
+          // (Positioned.fill + Center; not the left meta column).
+          Positioned.fill(
+            child: _buildImmersiveCenteredBiliTv(),
           ),
           // Sliding content panel — can grow to near the top of the screen.
           Positioned(
